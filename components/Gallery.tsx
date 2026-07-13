@@ -5,9 +5,9 @@ import { useLanguage } from "./LanguageContext";
 const galleryTranslations = {
   tr: {
     eyebrow: "LEMAN'S DELI",
-    title: "Dükkândan Kareler",
+    title: "Dükkandan Kareler",
     description:
-      "Kaş’taki dükkânımızdan, tezgâhımızdan ve günlük hazırlıklarımızdan seçilmiş kareler.",
+      "Kaş’taki dükkanımızdan, tezgahımızdan ve günlük hazırlıklarımızdan seçilmiş kareler.",
     image1: "Leman’s Deli iç mekân",
     image2: "Günlük hazırlanan mezeler",
     image3: "Şarküteri ve peynir seçkisi",

@@ -11,7 +11,7 @@ const pageTranslations = {
     heroDescription:
       "Günlük hazırlanan mezeler, seçkin yerel ve dünya peynirleri, kaliteli deli etleri ve özenle hazırlanan gurme sandviçler.",
     slogan: "İyi malzeme. Doğru tarif. Dürüst fiyat.",
-    menuButton: "Tezgâhtan Seçmeler",
+    menuButton: "Tezgahtan Seçmeler",
     directions: "Yol Tarifi",
 
     aboutEyebrow: "Biz Kimiz?",
@@ -24,7 +24,7 @@ const pageTranslations = {
       "Amacımız gösterişli değil, lezzetli ve dürüst bir deneyim sunmak. İster dükkânımızda, ister paket servis veya gel-al seçenekleriyle.",
 
     selectionEyebrow: "Leman's Deli",
-    selectionTitle: "Tezgâhtan Seçmeler",
+    selectionTitle: "Tezgahtan Seçmeler",
     selectionDescription:
       "Her gün yenilenen tezgâhımızdan, Leman's Deli'nin dört temel lezzet grubuna yakından bakın.",
 
