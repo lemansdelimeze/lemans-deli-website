@@ -8,7 +8,7 @@ const galleryTranslations = {
     title: "Dükkandan Kareler",
     description:
       "Kaş’taki dükkanımızdan, tezgahımızdan ve günlük hazırlıklarımızdan seçilmiş kareler.",
-    image1: "Leman’s Deli iç mekân",
+    image1: "Leman’s Deli iç mekan",
     image2: "Günlük hazırlanan mezeler",
     image3: "Şarküteri ve peynir seçkisi",
     image4: "Gurme sandviçler",
