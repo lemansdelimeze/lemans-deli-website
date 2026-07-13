@@ -315,7 +315,7 @@ const selections = [
       title: text.sandwichTitle,
       description: text.sandwichText,
       note: text.sandwichNote,
-      image: "/gallery-4.jpg",
+      image: "sandwich.jpg",
       imageAlt: text.sandwichTitle,
       reverse: true,
     },
