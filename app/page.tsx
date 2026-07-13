@@ -1,5 +1,5 @@
 "use client";
-
+import BrochurePopup from "../components/BrochurePopup";
 import Header from "../components/Header";
 import Gallery from "../components/Gallery";
 import { useLanguage } from "../components/LanguageContext";
@@ -19,14 +19,14 @@ const pageTranslations = {
     about1:
       "Leman's Deli; iyi malzemenin, doğru tarifin ve özenle seçilmiş ürünlerin bir araya geldiği butik bir şarküteridir.",
     about2:
-      "Tezgâhımızda Türkiye'nin farklı bölgelerinden yerel peynirleri, dünya klasiklerini, seçkin deli etlerini ve her gün taze hazırlanan mezeleri buluşturuyoruz.",
+      "Tezgahımızda Türkiye'nin farklı bölgelerinden yerel peynirleri, dünya klasiklerini, seçkin deli etlerini ve her gün taze hazırlanan mezeleri buluşturuyoruz.",
     about3:
-      "Amacımız gösterişli değil, lezzetli ve dürüst bir deneyim sunmak. İster dükkânımızda, ister paket servis veya gel-al seçenekleriyle.",
+      "Amacımız gösterişli değil, lezzetli ve dürüst bir deneyim sunmak. İster dükkanımızda, ister paket servis veya gel-al seçenekleriyle.",
 
     selectionEyebrow: "Leman's Deli",
     selectionTitle: "Tezgahtan Seçmeler",
     selectionDescription:
-      "Her gün yenilenen tezgâhımızdan, Leman's Deli'nin dört temel lezzet grubuna yakından bakın.",
+      "Her gün yenilenen tezgahımızdan, Leman's Deli'nin dört temel lezzet grubuna yakından bakın.",
 
     mezeNumber: "01",
     mezeTitle: "Günlük Mezeler",
@@ -220,7 +220,7 @@ const selections = [
 
     description:
       language === "tr"
-        ? "Erzincan, Bergama ve Obruk keçi tulumlarından Malakan göbek kaşara, eski kaşardan Kars gravyerine uzanan zengin bir yerel peynir seçkisi sunuyoruz. Tezgâhımızda ayrıca Brie, Camembert, Danish Blue, Gouda, Edam, Parmigiano ve İrlanda cheddarı gibi dünya klasiklerini de bulabilirsiniz."
+        ? "Erzincan, Bergama ve Obruk keçi tulumlarından Malakan göbek kaşara, eski kaşardan Kars gravyerine uzanan zengin bir yerel peynir seçkisi sunuyoruz. Tezgahımızda ayrıca Brie, Camembert, Danish Blue, Gouda, Edam, Parmigiano ve İrlanda cheddarı gibi dünya klasiklerini de bulabilirsiniz."
         : language === "en"
           ? "Our cheese counter features a rich selection ranging from regional Erzincan, Bergama and Obruk goat tulum cheeses to Malakan kaşar, aged kaşar and Kars Gruyère. We also offer international classics including Brie, Camembert, Danish Blue, Gouda, Edam, Parmigiano and Irish cheddar."
           : "На нашей сырной витрине представлены региональные сыры тулум из Эрзинджана, Бергамы и Обрука, сыр Малакан, выдержанный кашар и карский грюйер. Также вы найдёте Brie, Camembert, Danish Blue, Gouda, Edam, Parmigiano и ирландский чеддер.",
@@ -254,7 +254,7 @@ const selections = [
 
     description:
       language === "tr"
-        ? "Dana kaburga füme, rozbif, Balkan tipi kuru et, cotto tranç, Macar salam, dana jambon, mortadella ve fermente sucuk çeşitlerini bir araya getiriyoruz. Tezgâhımızda ayrıca hindi füme, somon füme ve Frankfurter, Bratwurst ve kokteyl sosis çeşitleri yer alıyor."
+        ? "Dana kaburga füme, rozbif, Balkan tipi kuru et, cotto tranç, Macar salam, dana jambon, mortadella ve fermente sucuk çeşitlerini bir araya getiriyoruz. Tezgahımızda ayrıca hindi füme, somon füme ve Frankfurter, Bratwurst ve kokteyl sosis çeşitleri yer alıyor."
         : language === "en"
           ? "Our delicatessen selection includes smoked beef rib, roast beef, Balkan-style cured beef, cotto beef, Hungarian salami, beef ham, mortadella and fermented sucuk. We also offer smoked turkey, smoked salmon and Frankfurter, Bratwurst and cocktail sausages."
           : "В нашей витрине представлены копчёные говяжьи рёбра, ростбиф, вяленая говядина по-балкански, cotto, венгерская салями, говяжья ветчина, мортаделла и ферментированный суджук. Также есть копчёная индейка, копчёный лосось и колбаски Frankfurter, Bratwurst и коктейльные сосиски.",
@@ -323,6 +323,7 @@ const selections = [
 
   return (
     <main className="min-h-screen overflow-hidden bg-[#f5efe7] text-[#2a1711]">
+       <BrochurePopup />
       <Header />
 
       {/* HERO */}
@@ -394,7 +395,7 @@ const selections = [
 
             <img
               src="/hero.jpg"
-              alt="Leman's Deli dükkânı"
+              alt="Leman's Deli dükkanı"
               className="relative z-10 h-[480px] w-full rounded-[2rem] object-cover shadow-2xl sm:h-[580px]"
             />
           </div>
@@ -419,7 +420,7 @@ const selections = [
         </div>
       </section>
 
-      {/* TEZGÂHTAN SEÇMELER */}
+      {/* TEZGAHTAN SEÇMELER */}
       <section id="menu" className="bg-[#fffaf4] px-6 py-24 sm:px-10 lg:py-32">
         <div className="mx-auto max-w-7xl">
           <div className="mx-auto mb-20 max-w-3xl text-center">
