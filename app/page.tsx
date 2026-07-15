@@ -1,5 +1,5 @@
 "use client";
-import BrochurePopup from "../components/BrochurePopup";
+
 import Header from "../components/Header";
 import Gallery from "../components/Gallery";
 import { useLanguage } from "../components/LanguageContext";
@@ -322,10 +322,9 @@ const selections = [
   ];
 
   return (
-    <main className="min-h-screen overflow-hidden bg-[#f5efe7] text-[#2a1711]">
-       <BrochurePopup />
+    <main className="min-h-screen overflow-hidden bg-[#f5efe7] text-[#2a1711]">      
       <Header />
-
+      
       {/* HERO */}
       <section
         id="hero"
