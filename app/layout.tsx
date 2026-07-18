@@ -6,23 +6,25 @@ export const metadata: Metadata = {
   metadataBase: new URL("https://lemansdeli.com"),
 
   title: {
-    default: "Leman's Deli | Kaş'ın Butik Şarküterisi",
+    default: "Leman's Deli |  Kaş'ta Mezeci & Butik Şarküteri",
     template: "%s | Leman's Deli",
   },
 
   description:
-    "Kaş'ta günlük hazırlanan mezeler, seçkin yerel ve dünya peynirleri, kaliteli deli etleri ve gurme sandviçler.",
+    "Kaş merkezde günlük hazırlanan taze mezeler, seçkin yerel ve dünya peynirleri, kaliteli şarküteri ürünleri ve gurme sandviçler. Paket servis ve gel-al",
 
   keywords: [
-    "Kaş şarküteri",
-    "Kaş meze",
-    "Kaş deli",
-    "Kaş peynir",
-    "Kaş sandviç",
-    "Leman's Deli",
-    "gourmet delicatessen Kaş",
-    "Turkish meze Kaş",
-  ],
+  "Kaş meze",
+  "Kaş mezeleri",
+  "Kaş'ta meze",
+  "Kaş şarküteri",
+  "Kaş deli",
+  "Kaş paket meze",
+  "Kaş peynir",
+  "Kaş sandviç",
+  "Leman's Deli",
+  "Turkish meze Kaş",
+],
 
   authors: [
     {
@@ -57,9 +59,9 @@ export const metadata: Metadata = {
 
   twitter: {
     card: "summary_large_image",
-    title: "Leman's Deli | Kaş'ın Butik Şarküterisi",
+    title: "Leman's Deli | Kaş Meze & Butik Şarküteri",
     description:
-      "Günlük mezeler, seçkin peynirler, kaliteli deli etleri ve gurme sandviçler.",
+      "Kaş merkezde günlük hazırlanan taze mezeler, seçkin yerel ve dünya peynirleri, kaliteli şarküteri ürünleri ve gurme sandviçler. Paket servis ve gel-al..",
     images: ["/opengraph-image.jpg"],
   },
 
@@ -74,7 +76,11 @@ export const metadata: Metadata = {
       "max-video-preview": -1,
     },
   },
-
+  
+icons: {
+  icon: "/icon.png",
+  apple: "/apple-icon.png",
+},
   category: "food",
 };
 

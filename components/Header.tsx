@@ -5,9 +5,9 @@ import { useLanguage, type Language } from "./LanguageContext";
 
 const translations = {
   tr: {
-    selection: "Tezgâhtan Seçmeler",
+    selection: "Tezgahtan Seçmeler",
     about: "Hakkımızda",
-    gallery: "Dükkândan Kareler",
+    gallery: "Dükkandan Kareler",
     contact: "İletişim",
     openMenu: "Menüyü aç",
     closeMenu: "Menüyü kapat",
