@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Script from "next/script";
 import "./globals.css";
 import { LanguageProvider } from "../components/LanguageContext";
 
@@ -6,7 +7,7 @@ export const metadata: Metadata = {
   metadataBase: new URL("https://lemansdeli.com"),
 
   title: {
-    default: "Leman's Deli |  Kaş'ta Mezeci & Butik Şarküteri",
+    default: "Leman's Deli | Kaş'ta Mezeci & Butik Şarküteri",
     template: "%s | Leman's Deli",
   },
 
@@ -14,17 +15,17 @@ export const metadata: Metadata = {
     "Kaş merkezde günlük hazırlanan taze mezeler, seçkin yerel ve dünya peynirleri, kaliteli şarküteri ürünleri ve gurme sandviçler. Paket servis ve gel-al",
 
   keywords: [
-  "Kaş meze",
-  "Kaş mezeleri",
-  "Kaş'ta meze",
-  "Kaş şarküteri",
-  "Kaş deli",
-  "Kaş paket meze",
-  "Kaş peynir",
-  "Kaş sandviç",
-  "Leman's Deli",
-  "Turkish meze Kaş",
-],
+    "Kaş meze",
+    "Kaş mezeleri",
+    "Kaş'ta meze",
+    "Kaş şarküteri",
+    "Kaş deli",
+    "Kaş paket meze",
+    "Kaş peynir",
+    "Kaş sandviç",
+    "Leman's Deli",
+    "Turkish meze Kaş",
+  ],
 
   authors: [
     {
@@ -61,7 +62,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "Leman's Deli | Kaş Meze & Butik Şarküteri",
     description:
-      "Kaş merkezde günlük hazırlanan taze mezeler, seçkin yerel ve dünya peynirleri, kaliteli şarküteri ürünleri ve gurme sandviçler. Paket servis ve gel-al..",
+      "Kaş merkezde günlük hazırlanan taze mezeler, seçkin yerel ve dünya peynirleri, kaliteli şarküteri ürünleri ve gurme sandviçler. Paket servis ve gel-al.",
     images: ["/opengraph-image.jpg"],
   },
 
@@ -76,11 +77,12 @@ export const metadata: Metadata = {
       "max-video-preview": -1,
     },
   },
-  
-icons: {
-  icon: "/icon.png",
-  apple: "/apple-icon.png",
-},
+
+  icons: {
+    icon: "/icon.png",
+    apple: "/apple-icon.png",
+  },
+
   category: "food",
 };
 
@@ -93,6 +95,22 @@ export default function RootLayout({
     <html lang="tr">
       <body>
         <LanguageProvider>{children}</LanguageProvider>
+
+        {/* Google tag (gtag.js) */}
+        <Script
+          src="https://www.googletagmanager.com/gtag/js?id=G-F6NJ6LVT6D"
+          strategy="afterInteractive"
+        />
+
+        <Script id="google-analytics" strategy="afterInteractive">
+          {`
+            window.dataLayer = window.dataLayer || [];
+            function gtag(){dataLayer.push(arguments);}
+            gtag('js', new Date());
+
+            gtag('config', 'G-F6NJ6LVT6D');
+          `}
+        </Script>
       </body>
     </html>
   );
