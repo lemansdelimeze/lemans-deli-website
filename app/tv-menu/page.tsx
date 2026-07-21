@@ -3,15 +3,38 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase";
 
+type Category =
+  | "meze"
+  | "zeytinyagli"
+  | "sandvic"
+  | "sarkuteri"
+  | "peynir";
+
 type MenuItem = {
   id: number;
   name: string;
   price: number | null;
-  category: "meze" | "sandvic";
+  category: Category;
   portion: string | null;
   active: boolean;
   sort_order: number;
 };
+
+const categoryLabels: Record<Category, string> = {
+  meze: "Mezeler",
+  zeytinyagli: "Zeytinyağlılar",
+  sandvic: "Sandviçler",
+  sarkuteri: "Şarküteri",
+  peynir: "Peynirler",
+};
+
+const categoryOrder: Category[] = [
+  "meze",
+  "zeytinyagli",
+  "sandvic",
+  "sarkuteri",
+  "peynir",
+];
 
 export default function TvMenuPage() {
   const [items, setItems] = useState<MenuItem[]>([]);
@@ -23,17 +46,16 @@ export default function TvMenuPage() {
       .from("menu_items")
       .select("*")
       .eq("active", true)
-      .order("category", { ascending: true })
       .order("sort_order", { ascending: true });
 
-   if (error) {
-  console.error("SUPABASE ERROR:", error);
-  setError("Menü yüklenemedi.");
-  setLoading(false);
-  return;
-}
+    if (error) {
+      console.error("SUPABASE ERROR:", error);
+      setError("Menü yüklenemedi.");
+      setLoading(false);
+      return;
+    }
 
-console.log("SUPABASE DATA:", data);
+    console.log("SUPABASE DATA:", data);
 
     setItems(data ?? []);
     setError(null);
@@ -49,9 +71,6 @@ console.log("SUPABASE DATA:", data);
 
     return () => clearInterval(interval);
   }, []);
-
-  const mezeler = items.filter((item) => item.category === "meze");
-  const sandvicler = items.filter((item) => item.category === "sandvic");
 
   if (loading) {
     return (
@@ -70,10 +89,10 @@ console.log("SUPABASE DATA:", data);
   }
 
   return (
-    <main className="min-h-screen bg-[#f4efe5] text-[#242820] overflow-hidden">
-      <div className="min-h-screen px-[5vw] py-[4vh] flex flex-col">
+    <main className="min-h-screen bg-[#f4efe5] text-[#242820]">
+      <div className="min-h-screen px-[5vw] py-[4vh]">
 
-        <header className="flex items-end justify-between border-b border-[#242820]/30 pb-[2vh]">
+        <header className="flex items-end justify-between border-b border-[#242820]/30 pb-[2vh] mb-[4vh]">
           <div>
             <p className="text-[1.3vw] uppercase tracking-[0.35em] mb-2">
               Kaş
@@ -85,80 +104,56 @@ console.log("SUPABASE DATA:", data);
           </div>
 
           <div className="text-right">
-            <p className="text-[1.5vw]">Günlük hazırlanan</p>
             <p className="text-[1.5vw]">
-              mezeler &amp; gurme sandviçler
+              Günlük hazırlanan
+            </p>
+
+            <p className="text-[1.5vw]">
+              mezeler &amp; gurme ürünler
             </p>
           </div>
         </header>
 
-        <section className="grid grid-cols-2 gap-[6vw] flex-1 pt-[4vh]">
+        <div className="grid grid-cols-2 gap-x-[6vw] gap-y-[5vh]">
+          {categoryOrder.map((category) => {
+            const categoryItems = items
+              .filter((item) => item.category === category)
+              .sort((a, b) => a.sort_order - b.sort_order);
 
-          <div>
-            <div className="flex items-end justify-between mb-[2.5vh]">
-              <h2 className="text-[3vw] font-semibold">
-                Mezeler
-              </h2>
+            if (categoryItems.length === 0) return null;
 
-              <span className="text-[1.1vw] opacity-60">
-                200 gr
-              </span>
-            </div>
+            return (
+              <section key={category}>
+                <h2 className="text-[2.7vw] font-semibold mb-[2vh]">
+                  {categoryLabels[category]}
+                </h2>
 
-            <div className="space-y-[1.4vh]">
-              {mezeler.map((item) => (
-                <div
-                  key={item.id}
-                  className="flex items-baseline text-[1.55vw]"
-                >
-                  <span className="font-medium whitespace-nowrap">
-                    {item.name}
-                  </span>
+                <div className="space-y-[1.2vh]">
+                  {categoryItems.map((item) => (
+                    <div
+                      key={item.id}
+                      className="flex items-baseline text-[1.45vw]"
+                    >
+                      <span className="font-medium whitespace-nowrap">
+                        {item.name}
+                      </span>
 
-                  <span className="mx-3 border-b border-dotted border-[#242820]/40 flex-1" />
+                      <span className="mx-3 border-b border-dotted border-[#242820]/40 flex-1" />
 
-                  {item.price !== null && (
-                    <span className="font-semibold whitespace-nowrap">
-                      {Number(item.price)} ₺
-                    </span>
-                  )}
+                      {item.price !== null && (
+                        <span className="font-semibold whitespace-nowrap">
+                          {Number(item.price)} ₺
+                        </span>
+                      )}
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-          </div>
+              </section>
+            );
+          })}
+        </div>
 
-          <div>
-            <div className="flex items-end justify-between mb-[2.5vh]">
-              <h2 className="text-[3vw] font-semibold">
-                Sandviçler
-              </h2>
-            </div>
-
-            <div className="space-y-[1.4vh]">
-              {sandvicler.map((item) => (
-                <div
-                  key={item.id}
-                  className="flex items-baseline text-[1.55vw]"
-                >
-                  <span className="font-medium whitespace-nowrap">
-                    {item.name}
-                  </span>
-
-                  <span className="mx-3 border-b border-dotted border-[#242820]/40 flex-1" />
-
-                  {item.price !== null && (
-                    <span className="font-semibold whitespace-nowrap">
-                      {Number(item.price)} ₺
-                    </span>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-
-        </section>
-
-        <footer className="border-t border-[#242820]/30 pt-[2vh] flex justify-between items-center text-[1.15vw]">
+        <footer className="border-t border-[#242820]/30 mt-[5vh] pt-[2vh] flex justify-between items-center text-[1.15vw]">
           <span>İyi malzeme · doğru tarif · özenli üretim</span>
           <span>@lemansdeli</span>
         </footer>
