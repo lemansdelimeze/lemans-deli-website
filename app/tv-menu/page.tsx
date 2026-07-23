@@ -11,36 +11,23 @@ type Category =
   | "peynir"
   | "icecek";
 
-type Dietary = "none" | "vegan" | "vegetarian";
-
 type MenuItem = {
   id: number;
 
   name: string | null;
   name_tr: string | null;
-  name_en: string | null;
-  name_ru: string | null;
-
   description_tr: string | null;
-  description_en: string | null;
-  description_ru: string | null;
 
   price: number | null;
   category: Category;
   portion: string | null;
 
-  calories_per_100g: number | null;
-  calories_per_portion: number | null;
-
-  allergens: string[] | null;
-  dietary: Dietary | null;
-  spicy_level: number | null;
-
   active: boolean;
   sort_order: number;
 };
 
-const DAILY_REFERENCE_KCAL = 2000;
+const BRAND_FONT =
+  '"American Typewriter", "Courier New", Courier, monospace';
 
 const categoryLabels: Record<Category, string> = {
   meze: "Mezeler",
@@ -59,34 +46,6 @@ const categoryOrder: Category[] = [
   "peynir",
   "icecek",
 ];
-
-const allergenLabels: Record<string, string> = {
-  milk: "Süt",
-  gluten: "Gluten",
-  egg: "Yumurta",
-  nuts: "Kuruyemiş",
-  peanut: "Yer fıstığı",
-  sesame: "Susam",
-  celery: "Kereviz",
-  soy: "Soya",
-  mustard: "Hardal",
-  fish: "Balık",
-  shellfish: "Kabuklu deniz ürünü",
-};
-
-const dietaryLabels: Record<Dietary, string> = {
-  none: "",
-  vegan: "Vegan",
-  vegetarian: "Vejetaryen",
-};
-
-function dailyReferencePercent(calories: number | null) {
-  if (!calories || calories <= 0) return null;
-
-  return Math.round(
-    (calories / DAILY_REFERENCE_KCAL) * 100
-  );
-}
 
 function formatPrice(price: number) {
   return Number(price).toLocaleString("tr-TR", {
@@ -108,12 +67,8 @@ export default function TvMenuPage() {
       .order("sort_order", { ascending: true });
 
     if (error) {
-      console.error("SUPABASE ERROR:", error);
-
-      setError(
-        `Menü yüklenemedi: ${error.message}`
-      );
-
+      console.error("TV MENU ERROR:", error);
+      setError(`Menü yüklenemedi: ${error.message}`);
       setLoading(false);
       return;
     }
@@ -147,25 +102,23 @@ export default function TvMenuPage() {
   }, []);
 
   const groupedItems = useMemo(() => {
-    return categoryOrder.map((category) => ({
-      category,
-
-      items: items
-        .filter(
-          (item) =>
-            item.category === category
-        )
-        .sort(
-          (a, b) =>
-            a.sort_order - b.sort_order
-        ),
-    }));
+    return categoryOrder
+      .map((category) => ({
+        category,
+        items: items
+          .filter((item) => item.category === category)
+          .sort((a, b) => a.sort_order - b.sort_order),
+      }))
+      .filter((group) => group.items.length > 0);
   }, [items]);
 
   if (loading) {
     return (
-      <main className="min-h-screen bg-[#f4efe5] text-[#242820] flex items-center justify-center">
-        <p className="text-2xl">
+      <main className="h-screen bg-[#f4efe5] text-[#242820] flex items-center justify-center overflow-hidden">
+        <p
+          style={{ fontFamily: BRAND_FONT }}
+          className="text-2xl"
+        >
           Menü yükleniyor...
         </p>
       </main>
@@ -174,242 +127,149 @@ export default function TvMenuPage() {
 
   if (error) {
     return (
-      <main className="min-h-screen bg-[#f4efe5] text-[#242820] flex items-center justify-center px-6 text-center">
-        <p className="text-2xl">
-          {error}
-        </p>
+      <main className="h-screen bg-[#f4efe5] text-[#242820] flex items-center justify-center px-6 text-center overflow-hidden">
+        <p className="text-xl">{error}</p>
       </main>
     );
   }
 
   return (
-    <main className="relative min-h-screen bg-[#f4efe5] text-[#242820] overflow-hidden">
-
+    <main className="relative h-screen overflow-hidden bg-[#f4efe5] text-[#242820]">
       {/* WATERMARK */}
       <div
         aria-hidden="true"
-        className="pointer-events-none fixed inset-0 z-0 flex items-center justify-center"
+        className="pointer-events-none absolute inset-0 z-0 flex items-center justify-center"
       >
         <img
           src="/logo.png"
           alt=""
-          className="w-[42vw] max-w-[720px] max-h-[70vh] object-contain opacity-[0.035]"
+          className="w-[38vw] max-w-[620px] max-h-[68vh] object-contain opacity-[0.028]"
         />
       </div>
 
-      <div className="relative z-10 min-h-screen px-[4vw] py-[3vh]">
-
+      <div className="relative z-10 flex h-screen flex-col px-[3.2vw] py-[2.2vh]">
         {/* HEADER */}
-        <header className="flex items-end justify-between border-b border-[#6e1f12]/25 pb-[1.8vh] mb-[3vh]">
-
+        <header className="flex shrink-0 items-center justify-between border-b border-[#6e1f12]/20 pb-[1.4vh]">
           <div>
-            <p className="text-[1vw] uppercase tracking-[0.35em] text-[#6e1f12] mb-[0.6vh]">
+            <p
+              style={{ fontFamily: BRAND_FONT }}
+              className="text-[0.72vw] uppercase tracking-[0.2em] text-[#6e1f12]/65"
+            >
               Kaş
             </p>
 
-            <h1 className="text-[3.8vw] leading-none font-semibold tracking-tight text-[#6e1f12]">
+            <h1
+              style={{
+                fontFamily: BRAND_FONT,
+                fontWeight: 700,
+              }}
+              className="mt-[0.3vh] text-[2.7vw] leading-none text-[#6e1f12]"
+            >
               Leman&apos;s Deli
             </h1>
           </div>
 
-          <div className="text-right max-w-[32vw]">
-            <p className="text-[1.15vw] leading-snug">
-              Günlük hazırlanan mezeler,
-            </p>
-
-            <p className="text-[1.15vw] leading-snug">
-              seçkin şarküteri ve gurme ürünler
-            </p>
-          </div>
-
+          <p
+            style={{ fontFamily: BRAND_FONT }}
+            className="max-w-[28vw] text-right text-[0.85vw] leading-[1.4] text-[#242820]/55"
+          >
+            Günlük hazırlanan mezeler · seçkin şarküteri · sandviçler
+          </p>
         </header>
 
-        {/* MENU */}
-        <div className="grid grid-cols-2 gap-x-[5vw] gap-y-[3.5vh]">
+        {/* MENU GRID */}
+        <div className="mt-[1.8vh] grid min-h-0 flex-1 grid-cols-3 content-start gap-x-[3vw] gap-y-[2.2vh] overflow-hidden">
+          {groupedItems.map(({ category, items: categoryItems }) => (
+            <section key={category} className="min-w-0">
+              <div className="mb-[1vh] flex items-end gap-[0.7vw]">
+                <h2
+                  style={{
+                    fontFamily: BRAND_FONT,
+                    fontWeight: 700,
+                  }}
+                  className="shrink-0 text-[1.55vw] leading-none text-[#6e1f12]"
+                >
+                  {categoryLabels[category]}
+                </h2>
 
-          {groupedItems.map(
-            ({
-              category,
-              items: categoryItems,
-            }) => {
-              if (
-                categoryItems.length === 0
-              ) {
-                return null;
-              }
+                <span className="mb-[0.15vh] h-px flex-1 bg-[#6e1f12]/16" />
+              </div>
 
-              return (
-                <section key={category}>
+              <div className="space-y-[0.85vh]">
+                {categoryItems.map((item) => {
+                  const name =
+                    item.name_tr ||
+                    item.name ||
+                    "İsimsiz ürün";
 
-                  <h2 className="text-[2.15vw] font-semibold mb-[1.5vh] text-[#6e1f12]">
-                    {
-                      categoryLabels[
-                        category
-                      ]
-                    }
-                  </h2>
+                  const description =
+                    item.description_tr?.trim() || "";
 
-                  <div className="space-y-[1.35vh]">
-
-                    {categoryItems.map(
-                      (item) => {
-                        const displayName =
-                          item.name_tr ||
-                          item.name ||
-                          "İsimsiz ürün";
-
-                        const description =
-                          item.description_tr?.trim() ||
-                          "";
-
-                        const allergens =
-                          item.allergens ??
-                          [];
-
-                        const dietary =
-                          item.dietary &&
-                          item.dietary !==
-                            "none"
-                            ? dietaryLabels[
-                                item
-                                  .dietary
-                              ]
-                            : "";
-
-                        const percentage =
-                          dailyReferencePercent(
-                            item.calories_per_portion
-                          );
-
-                        return (
-                          <article
-                            key={
-                              item.id
-                            }
-                            className="border-b border-[#242820]/10 pb-[1.15vh]"
+                  return (
+                    <article
+                      key={item.id}
+                      className="border-b border-[#242820]/8 pb-[0.75vh]"
+                    >
+                      {/* NAME + PORTION + PRICE */}
+                      <div className="flex items-baseline gap-[0.55vw]">
+                        <div className="min-w-0 flex-1">
+                          <span
+                            style={{
+                              fontFamily: BRAND_FONT,
+                              fontWeight: 700,
+                            }}
+                            className="text-[1.02vw] leading-tight text-[#6e1f12]"
                           >
+                            {name}
+                          </span>
 
-                            {/* NAME + PRICE */}
-                            <div className="flex items-baseline text-[1.32vw] leading-none">
+                          {item.portion && (
+                            <span
+                              style={{ fontFamily: BRAND_FONT }}
+                              className="ml-[0.35vw] text-[0.72vw] text-[#242820]/45"
+                            >
+                              · {item.portion}
+                            </span>
+                          )}
+                        </div>
 
-                              <span className="font-semibold whitespace-nowrap">
+                        {item.price !== null && (
+                          <span
+                            style={{
+                              fontFamily: BRAND_FONT,
+                              fontWeight: 700,
+                            }}
+                            className="shrink-0 text-[0.98vw] text-[#6e1f12]"
+                          >
+                            {formatPrice(item.price)} ₺
+                          </span>
+                        )}
+                      </div>
 
-                                {
-                                  displayName
-                                }
-
-                                {item.portion && (
-                                  <span className="font-normal opacity-60">
-                                    {" "}
-                                    ·{" "}
-                                    {
-                                      item.portion
-                                    }
-                                  </span>
-                                )}
-
-                              </span>
-
-                              <span className="mx-[0.7vw] border-b border-dotted border-[#242820]/30 flex-1 translate-y-[-0.15em]" />
-
-                              {item.price !== null && (
-                                <span className="font-semibold whitespace-nowrap text-[#6e1f12]">
-                                  {formatPrice(
-                                    item.price
-                                  )}{" "}
-                                  ₺
-                                </span>
-                              )}
-
-                            </div>
-
-                            {/* DESCRIPTION */}
-                            {description && (
-                              <p className="mt-[0.65vh] text-[0.88vw] leading-[1.35] opacity-65 max-w-[94%]">
-                                {
-                                  description
-                                }
-                              </p>
-                            )}
-
-                            {/* CALORIES */}
-                            {item.calories_per_portion !==
-                              null && (
-                              <p className="mt-[0.5vh] text-[0.72vw] text-[#6e1f12]/80">
-                                {
-                                  item.calories_per_portion
-                                }{" "}
-                                kcal
-                                {percentage !==
-                                  null &&
-                                  ` · 2.000 kcal referansın %${percentage}'i`}
-                              </p>
-                            )}
-
-                            {/* LABELS */}
-                            {(dietary ||
-                              allergens.length >
-                                0) && (
-                              <div className="mt-[0.5vh] flex flex-wrap gap-x-[0.7vw] gap-y-[0.2vh] text-[0.68vw] uppercase tracking-[0.08em]">
-
-                                {dietary && (
-                                  <span className="text-[#6e1f12] font-semibold">
-                                    {
-                                      dietary
-                                    }
-                                  </span>
-                                )}
-
-                                {allergens.length >
-                                  0 && (
-                                  <span className="opacity-55">
-                                    Alerjen:{" "}
-                                    {allergens
-                                      .map(
-                                        (
-                                          allergen
-                                        ) =>
-                                          allergenLabels[
-                                            allergen
-                                          ] ??
-                                          allergen
-                                      )
-                                      .join(
-                                        " · "
-                                      )}
-                                  </span>
-                                )}
-
-                              </div>
-                            )}
-
-                          </article>
-                        );
-                      }
-                    )}
-
-                  </div>
-
-                </section>
-              );
-            }
-          )}
-
+                      {/* CONTENT */}
+                      {description && (
+                        <p className="mt-[0.35vh] line-clamp-2 max-w-[96%] text-[0.7vw] leading-[1.35] text-[#242820]/55">
+                          {description}
+                        </p>
+                      )}
+                    </article>
+                  );
+                })}
+              </div>
+            </section>
+          ))}
         </div>
 
         {/* FOOTER */}
-        <footer className="border-t border-[#6e1f12]/25 mt-[3.5vh] pt-[1.5vh] flex justify-between items-center text-[0.85vw]">
-
+        <footer className="mt-[1.4vh] flex shrink-0 items-center justify-between border-t border-[#6e1f12]/16 pt-[0.8vh] text-[0.65vw] text-[#242820]/40">
           <span>
-            Günlük hazırlanır · paylaşmak için tasarlanır
+            Günlük hazırlanır · çeşitler stok durumuna göre değişebilir
           </span>
 
-          <span>
-            @lemansdeli
+          <span style={{ fontFamily: BRAND_FONT }}>
+            @lemansdeli · Kaş
           </span>
-
         </footer>
-
       </div>
     </main>
   );
