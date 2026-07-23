@@ -16,7 +16,6 @@ type MenuItem = {
 
   name: string | null;
   name_tr: string | null;
-  description_tr: string | null;
 
   price: number | null;
   category: Category;
@@ -24,6 +23,12 @@ type MenuItem = {
 
   active: boolean;
   sort_order: number;
+};
+
+type MenuBlock = {
+  category: Category;
+  items: MenuItem[];
+  continuation: boolean;
 };
 
 const BRAND_FONT =
@@ -47,6 +52,12 @@ const categoryOrder: Category[] = [
   "icecek",
 ];
 
+/*
+  Bir kategoride 6'dan fazla ürün varsa,
+  devamı otomatik olarak bir sonraki kolona geçer.
+*/
+const MAX_ITEMS_PER_BLOCK = 6;
+
 function formatPrice(price: number) {
   return Number(price).toLocaleString("tr-TR", {
     maximumFractionDigits: 2,
@@ -63,7 +74,6 @@ export default function TvMenuPage() {
       .from("menu_items")
       .select("*")
       .eq("active", true)
-      .order("category", { ascending: true })
       .order("sort_order", { ascending: true });
 
     if (error) {
@@ -101,23 +111,41 @@ export default function TvMenuPage() {
     };
   }, []);
 
-  const groupedItems = useMemo(() => {
-    return categoryOrder
-      .map((category) => ({
-        category,
-        items: items
-          .filter((item) => item.category === category)
-          .sort((a, b) => a.sort_order - b.sort_order),
-      }))
-      .filter((group) => group.items.length > 0);
+  const menuBlocks = useMemo<MenuBlock[]>(() => {
+    const blocks: MenuBlock[] = [];
+
+    categoryOrder.forEach((category) => {
+      const categoryItems = items
+        .filter((item) => item.category === category)
+        .sort((a, b) => a.sort_order - b.sort_order);
+
+      if (categoryItems.length === 0) return;
+
+      for (
+        let i = 0;
+        i < categoryItems.length;
+        i += MAX_ITEMS_PER_BLOCK
+      ) {
+        blocks.push({
+          category,
+          items: categoryItems.slice(
+            i,
+            i + MAX_ITEMS_PER_BLOCK
+          ),
+          continuation: i > 0,
+        });
+      }
+    });
+
+    return blocks;
   }, [items]);
 
   if (loading) {
     return (
-      <main className="h-screen bg-[#f4efe5] text-[#242820] flex items-center justify-center overflow-hidden">
+      <main className="h-screen bg-[#f4efe5] flex items-center justify-center overflow-hidden">
         <p
           style={{ fontFamily: BRAND_FONT }}
-          className="text-2xl"
+          className="text-2xl text-[#6e1f12]"
         >
           Menü yükleniyor...
         </p>
@@ -127,14 +155,20 @@ export default function TvMenuPage() {
 
   if (error) {
     return (
-      <main className="h-screen bg-[#f4efe5] text-[#242820] flex items-center justify-center px-6 text-center overflow-hidden">
-        <p className="text-xl">{error}</p>
+      <main className="h-screen bg-[#f4efe5] flex items-center justify-center px-6 text-center overflow-hidden">
+        <p
+          style={{ fontFamily: BRAND_FONT }}
+          className="text-xl text-[#6e1f12]"
+        >
+          {error}
+        </p>
       </main>
     );
   }
 
   return (
     <main className="relative h-screen overflow-hidden bg-[#f4efe5] text-[#242820]">
+
       {/* WATERMARK */}
       <div
         aria-hidden="true"
@@ -143,95 +177,107 @@ export default function TvMenuPage() {
         <img
           src="/logo.png"
           alt=""
-          className="w-[38vw] max-w-[620px] max-h-[68vh] object-contain opacity-[0.028]"
+          className="w-[37vw] max-w-[680px] max-h-[64vh] object-contain opacity-[0.032]"
         />
       </div>
 
-      <div className="relative z-10 flex h-screen flex-col px-[3.2vw] py-[2.2vh]">
-        {/* HEADER */}
-        <header className="flex shrink-0 items-center justify-between border-b border-[#6e1f12]/20 pb-[1.4vh]">
-          <div>
-            <p
-              style={{ fontFamily: BRAND_FONT }}
-              className="text-[0.72vw] uppercase tracking-[0.2em] text-[#6e1f12]/65"
-            >
-              Kaş
-            </p>
+      <div className="relative z-10 flex h-full flex-col px-[3vw] py-[2vh]">
 
-            <h1
-              style={{
-                fontFamily: BRAND_FONT,
-                fontWeight: 700,
-              }}
-              className="mt-[0.3vh] text-[2.7vw] leading-none text-[#6e1f12]"
-            >
-              Leman&apos;s Deli
-            </h1>
+        {/* HEADER */}
+        <header className="flex shrink-0 items-center justify-between border-b border-[#6e1f12]/22 pb-[1.3vh]">
+
+          <img
+            src="/logo-horizontal.png"
+            alt="Leman's Deli"
+            className="w-[19vw] max-h-[8vh] object-contain object-left"
+          />
+
+          <div
+            style={{ fontFamily: BRAND_FONT }}
+            className="text-right text-[0.9vw] leading-[1.45] text-[#6e1f12]/75"
+          >
+            <p>Günlük hazırlanan mezeler</p>
+            <p>şarküteri &amp; sandviçler</p>
           </div>
 
-          <p
-            style={{ fontFamily: BRAND_FONT }}
-            className="max-w-[28vw] text-right text-[0.85vw] leading-[1.4] text-[#242820]/55"
-          >
-            Günlük hazırlanan mezeler · seçkin şarküteri · sandviçler
-          </p>
         </header>
 
-        {/* MENU GRID */}
-        <div className="mt-[1.8vh] grid min-h-0 flex-1 grid-cols-3 content-start gap-x-[3vw] gap-y-[2.2vh] overflow-hidden">
-          {groupedItems.map(({ category, items: categoryItems }) => (
-            <section key={category} className="min-w-0">
-              <div className="mb-[1vh] flex items-end gap-[0.7vw]">
+        {/* MENU */}
+        <div className="grid min-h-0 flex-1 grid-cols-3 auto-rows-min content-start gap-x-[3vw] gap-y-[2.2vh] pt-[2vh] overflow-hidden">
+
+          {menuBlocks.map((block, blockIndex) => (
+            <section
+              key={`${block.category}-${blockIndex}`}
+              className="min-w-0"
+            >
+
+              {/* CATEGORY TITLE */}
+              <div className="mb-[1.15vh] flex items-end gap-[0.75vw]">
+
                 <h2
                   style={{
                     fontFamily: BRAND_FONT,
                     fontWeight: 700,
                   }}
-                  className="shrink-0 text-[1.55vw] leading-none text-[#6e1f12]"
+                  className="shrink-0 text-[1.65vw] leading-none text-[#6e1f12]"
                 >
-                  {categoryLabels[category]}
+                  {categoryLabels[block.category]}
+
+                  {block.continuation && (
+                    <span className="ml-[0.4vw] text-[0.7vw] font-normal opacity-45">
+                      devam
+                    </span>
+                  )}
                 </h2>
 
-                <span className="mb-[0.15vh] h-px flex-1 bg-[#6e1f12]/16" />
+                <span className="mb-[0.1vh] h-px flex-1 bg-[#6e1f12]/18" />
+
               </div>
 
-              <div className="space-y-[0.85vh]">
-                {categoryItems.map((item) => {
+              {/* PRODUCTS */}
+              <div className="space-y-[1.2vh]">
+
+                {block.items.map((item) => {
                   const name =
                     item.name_tr ||
                     item.name ||
                     "İsimsiz ürün";
 
-                  const description =
-                    item.description_tr?.trim() || "";
-
                   return (
                     <article
                       key={item.id}
-                      className="border-b border-[#242820]/8 pb-[0.75vh]"
+                      className="border-b border-[#6e1f12]/10 pb-[1vh]"
                     >
-                      {/* NAME + PORTION + PRICE */}
-                      <div className="flex items-baseline gap-[0.55vw]">
-                        <div className="min-w-0 flex-1">
+
+                      {/* PRODUCT NAME */}
+                      <h3
+                        style={{
+                          fontFamily: BRAND_FONT,
+                          fontWeight: 700,
+                        }}
+                        className="text-[1.2vw] leading-[1.15] text-[#6e1f12]"
+                      >
+                        {name}
+                      </h3>
+
+                      {/* PORTION + PRICE */}
+                      <div className="mt-[0.5vh] flex items-baseline">
+
+                        {item.portion ? (
                           <span
                             style={{
                               fontFamily: BRAND_FONT,
-                              fontWeight: 700,
+                              fontWeight: 600,
                             }}
-                            className="text-[1.02vw] leading-tight text-[#6e1f12]"
+                            className="shrink-0 text-[0.92vw] text-[#242820]/72"
                           >
-                            {name}
+                            {item.portion}
                           </span>
+                        ) : (
+                          <span />
+                        )}
 
-                          {item.portion && (
-                            <span
-                              style={{ fontFamily: BRAND_FONT }}
-                              className="ml-[0.35vw] text-[0.72vw] text-[#242820]/45"
-                            >
-                              · {item.portion}
-                            </span>
-                          )}
-                        </div>
+                        <span className="mx-[0.65vw] flex-1 border-b border-dotted border-[#6e1f12]/30" />
 
                         {item.price !== null && (
                           <span
@@ -239,37 +285,39 @@ export default function TvMenuPage() {
                               fontFamily: BRAND_FONT,
                               fontWeight: 700,
                             }}
-                            className="shrink-0 text-[0.98vw] text-[#6e1f12]"
+                            className="shrink-0 text-[1.08vw] text-[#6e1f12]"
                           >
                             {formatPrice(item.price)} ₺
                           </span>
                         )}
+
                       </div>
 
-                      {/* CONTENT */}
-                      {description && (
-                        <p className="mt-[0.35vh] line-clamp-2 max-w-[96%] text-[0.7vw] leading-[1.35] text-[#242820]/55">
-                          {description}
-                        </p>
-                      )}
                     </article>
                   );
                 })}
+
               </div>
+
             </section>
           ))}
+
         </div>
 
         {/* FOOTER */}
-        <footer className="mt-[1.4vh] flex shrink-0 items-center justify-between border-t border-[#6e1f12]/16 pt-[0.8vh] text-[0.65vw] text-[#242820]/40">
+        <footer
+          style={{ fontFamily: BRAND_FONT }}
+          className="mt-[1vh] flex shrink-0 justify-between border-t border-[#6e1f12]/18 pt-[0.75vh] text-[0.65vw] text-[#6e1f12]/55"
+        >
           <span>
-            Günlük hazırlanır · çeşitler stok durumuna göre değişebilir
+            Çeşitler günlük ve stok durumuna göre değişebilir.
           </span>
 
-          <span style={{ fontFamily: BRAND_FONT }}>
+          <span>
             @lemansdeli · Kaş
           </span>
         </footer>
+
       </div>
     </main>
   );
