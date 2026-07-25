@@ -15,6 +15,8 @@ type Category =
   | "meze"
   | "zeytinyagli"
   | "sandvic"
+  | "sosisli"
+  | "tost"
   | "sarkuteri"
   | "peynir"
   | "icecek";
@@ -88,6 +90,8 @@ const categories: {
   { value: "meze", label: "Mezeler" },
   { value: "zeytinyagli", label: "Zeytinyağlılar" },
   { value: "sandvic", label: "Sandviçler" },
+  { value: "sosisli", label: "Sosisliler" },
+  { value: "tost", label: "Tostlar" },
   { value: "sarkuteri", label: "Şarküteri" },
   { value: "peynir", label: "Peynirler" },
   { value: "icecek", label: "İçecekler" },
@@ -272,16 +276,17 @@ export default function TvMenuAdminPage() {
   const [uploadingId, setUploadingId] = useState<number | null>(null);
 
   const [openCategories, setOpenCategories] = useState<
-    Record<Category, boolean>
-  >({
-    meze: true,
-    zeytinyagli: false,
-    sandvic: false,
-    sarkuteri: false,
-    peynir: false,
-    icecek: false,
-  });
-
+  Record<Category, boolean>
+>({
+  meze: true,
+  zeytinyagli: false,
+  sandvic: false,
+  sosisli: false,
+  tost: false,
+  sarkuteri: false,
+  peynir: false,
+  icecek: false,
+});
   const [openItemId, setOpenItemId] = useState<number | null>(null);
 
   const [newProductOpen, setNewProductOpen] = useState(false);
