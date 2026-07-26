@@ -1,17 +1,17 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "../../../lib/supabase";
 
-type Category =
-  | "meze"
-  | "zeytinyagli"
-  | "sandvic"
-  | "sarkuteri"
-  | "peynir"
-  | "icecek";
-
 type Dietary = "none" | "vegan" | "vegetarian";
+
+type Category = {
+  id: number;
+  slug: string;
+  name_tr: string;
+  sort_order: number;
+  active: boolean;
+};
 
 type MenuItem = {
   id: number;
@@ -21,7 +21,8 @@ type MenuItem = {
   description_tr: string | null;
 
   price: number | null;
-  category: Category;
+  category: string | null;
+  category_id: number | null;
   portion: string | null;
 
   calories_per_100g: number | null;
@@ -34,28 +35,15 @@ type MenuItem = {
   sort_order: number;
 };
 
+type CategoryGroup = {
+  category: Category;
+  items: MenuItem[];
+};
+
 const BRAND_FONT =
   '"American Typewriter", "Courier New", Courier, monospace';
 
 const DAILY_REFERENCE_KCAL = 2000;
-
-const categoryLabels: Record<Category, string> = {
-  meze: "Mezeler",
-  zeytinyagli: "Zeytinyağlılar",
-  sandvic: "Sandviçler",
-  sarkuteri: "Şarküteri",
-  peynir: "Peynirler",
-  icecek: "İçecekler",
-};
-
-const categoryOrder: Category[] = [
-  "meze",
-  "zeytinyagli",
-  "sandvic",
-  "sarkuteri",
-  "peynir",
-  "icecek",
-];
 
 const allergenLabels: Record<string, string> = {
   milk: "Süt",
@@ -86,40 +74,126 @@ function formatPrice(price: number) {
 function dailyReferencePercent(calories: number | null) {
   if (!calories || calories <= 0) return null;
 
-  return Math.round((calories / DAILY_REFERENCE_KCAL) * 100);
+  return Math.round(
+    (calories / DAILY_REFERENCE_KCAL) * 100
+  );
 }
 
 export default function PrintableMenuPage() {
+  const [categories, setCategories] = useState<Category[]>([]);
   const [items, setItems] = useState<MenuItem[]>([]);
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  async function loadMenu() {
-    const { data, error } = await supabase
-      .from("menu_items")
-      .select("*")
-      .eq("active", true)
-      .order("category", { ascending: true })
-      .order("sort_order", { ascending: true });
+  const loadMenu = useCallback(async () => {
+    setLoading(true);
 
-    if (error) {
-      console.error("PRINT MENU ERROR:", error);
-      setError(error.message);
+    const [categoriesResult, itemsResult] =
+      await Promise.all([
+        supabase
+          .from("categories")
+          .select(
+            "id, slug, name_tr, sort_order, active"
+          )
+          .eq("active", true)
+          .order("sort_order", { ascending: true }),
+
+        supabase
+          .from("menu_items")
+          .select(
+            `
+              id,
+              name,
+              name_tr,
+              description_tr,
+              price,
+              category,
+              category_id,
+              portion,
+              calories_per_100g,
+              calories_per_portion,
+              allergens,
+              dietary,
+              active,
+              sort_order
+            `
+          )
+          .eq("active", true)
+          .order("sort_order", { ascending: true }),
+      ]);
+
+    if (categoriesResult.error) {
+      console.error(
+        "PRINT CATEGORY ERROR:",
+        categoriesResult.error
+      );
+
+      setError(
+        `Kategoriler yüklenemedi: ${categoriesResult.error.message}`
+      );
+
       setLoading(false);
       return;
     }
 
-    setItems((data ?? []) as MenuItem[]);
+    if (itemsResult.error) {
+      console.error(
+        "PRINT MENU ERROR:",
+        itemsResult.error
+      );
+
+      setError(
+        `Menü yüklenemedi: ${itemsResult.error.message}`
+      );
+
+      setLoading(false);
+      return;
+    }
+
+    setCategories(
+      (categoriesResult.data ?? []) as Category[]
+    );
+
+    setItems(
+      (itemsResult.data ?? []) as MenuItem[]
+    );
+
+    setError(null);
     setLoading(false);
-  }
+  }, []);
 
   useEffect(() => {
-    loadMenu();
-  }, []);
+    void loadMenu();
+  }, [loadMenu]);
+
+  const groupedCategories = useMemo<CategoryGroup[]>(() => {
+    return categories
+      .map((category) => {
+        const categoryItems = items
+          .filter((item) => {
+            if (item.category_id !== null) {
+              return item.category_id === category.id;
+            }
+
+            return item.category === category.slug;
+          })
+          .sort(
+            (first, second) =>
+              first.sort_order - second.sort_order
+          );
+
+        return {
+          category,
+          items: categoryItems,
+        };
+      })
+      .filter((group) => group.items.length > 0);
+  }, [categories, items]);
 
   if (loading) {
     return (
-      <main className="min-h-screen flex items-center justify-center bg-[#f4efe5] text-[#242820]">
+      <main className="flex min-h-screen items-center justify-center bg-[#f4efe5] text-[#242820]">
         Menü hazırlanıyor...
       </main>
     );
@@ -127,8 +201,8 @@ export default function PrintableMenuPage() {
 
   if (error) {
     return (
-      <main className="min-h-screen flex items-center justify-center bg-[#f4efe5] text-[#242820] px-6 text-center">
-        Menü yüklenemedi: {error}
+      <main className="flex min-h-screen items-center justify-center bg-[#f4efe5] px-6 text-center text-[#242820]">
+        {error}
       </main>
     );
   }
@@ -173,7 +247,6 @@ export default function PrintableMenuPage() {
         }
       `}</style>
 
-      {/* SCREEN TOOLBAR */}
       <div className="no-print sticky top-0 z-50 flex items-center justify-between border-b border-[#6e1f12]/15 bg-[#f4efe5]/85 px-6 py-3 text-[#242820] backdrop-blur-md">
         <div>
           <strong style={{ fontFamily: BRAND_FONT }}>
@@ -194,10 +267,7 @@ export default function PrintableMenuPage() {
         </button>
       </div>
 
-      {/* A4 */}
       <main className="print-sheet relative mx-auto my-8 min-h-[297mm] w-[210mm] overflow-hidden bg-[#f4efe5] px-[14mm] py-[11mm] text-[#242820] shadow-2xl">
-
-        {/* WATERMARK */}
         <div
           aria-hidden="true"
           className="pointer-events-none absolute inset-0 z-0 flex items-center justify-center"
@@ -205,13 +275,11 @@ export default function PrintableMenuPage() {
           <img
             src="/logo.png"
             alt=""
-            className="w-[130mm] max-h-[180mm] object-contain opacity-[0.022]"
+            className="max-h-[180mm] w-[130mm] object-contain opacity-[0.022]"
           />
         </div>
 
         <div className="relative z-10">
-
-          {/* HEADER */}
           <header className="mb-[9mm] text-center">
             <img
               src="/logo-horizontal.png"
@@ -242,29 +310,20 @@ export default function PrintableMenuPage() {
             </div>
           </header>
 
-          {/* MENU GRID */}
           <div className="grid grid-cols-2 gap-x-[11mm] gap-y-[9mm]">
-            {categoryOrder.map((category) => {
-              const categoryItems = items
-                .filter((item) => item.category === category)
-                .sort((a, b) => a.sort_order - b.sort_order);
-
-              if (categoryItems.length === 0) return null;
-
-              return (
-                <MenuCategory
-                  key={category}
-                  title={categoryLabels[category]}
-                  items={categoryItems}
-                />
-              );
-            })}
+            {groupedCategories.map((group) => (
+              <MenuCategory
+                key={group.category.id}
+                title={group.category.name_tr}
+                items={group.items}
+              />
+            ))}
           </div>
 
-          {/* FOOTER */}
           <footer className="mt-[11mm] flex items-center justify-between border-t border-[#6e1f12]/18 pt-[3mm] text-[7px] tracking-[0.035em] text-[#242820]/48">
             <span>
-              Günlük hazırlanır · Mevsimsel ürünlere göre çeşitler değişebilir.
+              Günlük hazırlanır · Mevsimsel ürünlere göre
+              çeşitler değişebilir.
             </span>
 
             <span style={{ fontFamily: BRAND_FONT }}>
@@ -286,7 +345,6 @@ function MenuCategory({
 }) {
   return (
     <section className="menu-section">
-      {/* CATEGORY TITLE */}
       <div className="mb-[4mm]">
         <h2
           style={{ fontFamily: BRAND_FONT }}
@@ -305,8 +363,7 @@ function MenuCategory({
             item.name ||
             "İsimsiz ürün";
 
-          const allergens =
-            item.allergens ?? [];
+          const allergens = item.allergens ?? [];
 
           const dietary =
             item.dietary &&
@@ -324,19 +381,17 @@ function MenuCategory({
               key={item.id}
               className="menu-item"
             >
-              {/* PRODUCT + PRICE */}
               <div className="flex items-start justify-between gap-[4mm]">
-
                 <div className="min-w-0 flex-1">
                   <h3
-  style={{
-    fontFamily: BRAND_FONT,
-    fontWeight: 700,
-  }}
-  className="text-[13px] leading-[1.2] text-[#6e1f12]"
->
-  {name}
-</h3>
+                    style={{
+                      fontFamily: BRAND_FONT,
+                      fontWeight: 700,
+                    }}
+                    className="text-[13px] leading-[1.2] text-[#6e1f12]"
+                  >
+                    {name}
+                  </h3>
 
                   {item.portion && (
                     <p
@@ -362,19 +417,16 @@ function MenuCategory({
                 )}
               </div>
 
-              {/* DESCRIPTION */}
               {item.description_tr && (
                 <p className="mt-[1.4mm] max-w-[96%] text-[8.2px] leading-[1.5] text-[#242820]/58">
                   {item.description_tr}
                 </p>
               )}
 
-              {/* META */}
               {(dietary ||
                 allergens.length > 0 ||
                 item.calories_per_portion !== null) && (
                 <div className="mt-[1.4mm] flex flex-wrap gap-x-[2.2mm] gap-y-[1mm] text-[6.8px] uppercase tracking-[0.06em]">
-
                   {dietary && (
                     <span
                       style={{
@@ -406,7 +458,6 @@ function MenuCategory({
                         ` · %${percentage} referans`}
                     </span>
                   )}
-
                 </div>
               )}
             </article>
