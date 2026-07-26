@@ -33,8 +33,9 @@ type MenuItem = {
   description_ru: string | null;
 
   price: number | null;
-  portion: string | null;
-
+portion: string | null;
+portion_en: string | null;
+portion_ru: string | null;
   category: string | null;
   category_id: number | null;
 

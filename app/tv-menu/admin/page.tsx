@@ -37,8 +37,9 @@ type MenuItem = {
 
   price: number | null;
   category: Category;
-  portion: string | null;
-
+portion: string | null;
+portion_en: string | null;
+portion_ru: string | null;
   calories_per_100g: number | null;
   calories_per_portion: number | null;
 
@@ -56,7 +57,6 @@ type DraftItem = {
   name_tr: string;
   name_en: string;
   name_ru: string;
-
   description_tr: string;
   description_en: string;
   description_ru: string;
@@ -64,6 +64,8 @@ type DraftItem = {
   price: string;
   category: Category;
   portion: string;
+portion_en: string;
+portion_ru: string;
 
   calories_per_100g: string;
   calories_per_portion: string;
@@ -127,13 +129,21 @@ const spicyOptions = [
 const inputClass =
   "w-full rounded-xl border border-black/15 bg-white px-3 py-3 outline-none focus:border-[#6e1f12]/60";
 
-function defaultPortion(category: Category) {
-  return category === "meze" || category === "zeytinyagli"
-    ? "200 gr"
-    : "";
+function defaultPortions(category: Category) {
+  const weighted =
+    category === "meze" ||
+    category === "zeytinyagli";
+
+  return {
+    portion: weighted ? "200 gr" : "",
+    portion_en: weighted ? "200 g" : "",
+    portion_ru: weighted ? "200 г" : "",
+  };
 }
 
 function emptyDraft(category: Category = "meze"): DraftItem {
+  const portions = defaultPortions(category);
+
   return {
     name_tr: "",
     name_en: "",
@@ -145,7 +155,10 @@ function emptyDraft(category: Category = "meze"): DraftItem {
 
     price: "",
     category,
-    portion: defaultPortion(category),
+
+    portion: portions.portion,
+    portion_en: portions.portion_en,
+    portion_ru: portions.portion_ru,
 
     calories_per_100g: "",
     calories_per_portion: "",
@@ -174,6 +187,8 @@ function itemToDraft(item: MenuItem): DraftItem {
     price: item.price !== null ? String(item.price) : "",
     category: item.category,
     portion: item.portion ?? "",
+portion_en: item.portion_en ?? "",
+portion_ru: item.portion_ru ?? "",
 
     calories_per_100g:
       item.calories_per_100g !== null
@@ -679,7 +694,9 @@ export default function TvMenuAdminPage() {
         price: newItem.price ? Number(newItem.price) : null,
 
         category: newItem.category,
-        portion: newItem.portion.trim() || null,
+       portion: newItem.portion.trim() || null,
+portion_en: newItem.portion_en.trim() || null,
+portion_ru: newItem.portion_ru.trim() || null,
 
         calories_per_100g: newItem.calories_per_100g
           ? Number(newItem.calories_per_100g)
@@ -1403,85 +1420,119 @@ function MainFields({
   onChange: (changes: Partial<DraftItem>) => void;
 }) {
   return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <Field label="Kategori">
+          <select
+            value={value.category}
+            onChange={(event) => {
+              const category =
+                event.target.value as Category;
 
-      <Field label="Kategori">
+              const defaults =
+                defaultPortions(category);
 
-        <select
-          value={value.category}
-          onChange={(event) => {
-            const category = event.target.value as Category;
+              onChange({
+                category,
 
-            onChange({
-              category,
+                portion:
+                  value.portion ||
+                  defaults.portion,
 
-              portion:
-                value.portion ||
-                defaultPortion(category),
-            });
-          }}
-          className={inputClass}
-        >
+                portion_en:
+                  value.portion_en ||
+                  defaults.portion_en,
 
-          {categories.map((category) => (
-            <option
-              key={category.value}
-              value={category.value}
-            >
-              {category.label}
-            </option>
-          ))}
+                portion_ru:
+                  value.portion_ru ||
+                  defaults.portion_ru,
+              });
+            }}
+            className={inputClass}
+          >
+            {categories.map((category) => (
+              <option
+                key={category.value}
+                value={category.value}
+              >
+                {category.label}
+              </option>
+            ))}
+          </select>
+        </Field>
 
-        </select>
+        <Field label="Fiyat">
+          <input
+            type="number"
+            step="0.01"
+            value={value.price}
+            onChange={(event) =>
+              onChange({
+                price: event.target.value,
+              })
+            }
+            className={inputClass}
+          />
+        </Field>
 
-      </Field>
+        <Field label="Menü Sırası">
+          <input
+            type="number"
+            value={value.sort_order}
+            onChange={(event) =>
+              onChange({
+                sort_order:
+                  event.target.value,
+              })
+            }
+            className={inputClass}
+          />
+        </Field>
+      </div>
 
-      <Field label="Gramaj / Porsiyon">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <Field label="🇹🇷 Gramaj / Porsiyon">
+          <input
+            value={value.portion}
+            onChange={(event) =>
+              onChange({
+                portion:
+                  event.target.value,
+              })
+            }
+            placeholder="200 gr, 6 adet, 110 gr baget"
+            className={inputClass}
+          />
+        </Field>
 
-        <input
-          value={value.portion}
-          onChange={(event) =>
-            onChange({
-              portion: event.target.value,
-            })
-          }
-          placeholder="200 gr, 330 ml, adet..."
-          className={inputClass}
-        />
+        <Field label="🇬🇧 Weight / Portion">
+          <input
+            value={value.portion_en}
+            onChange={(event) =>
+              onChange({
+                portion_en:
+                  event.target.value,
+              })
+            }
+            placeholder="200 g, 6 pcs, 110 g baguette"
+            className={inputClass}
+          />
+        </Field>
 
-      </Field>
-
-      <Field label="Fiyat">
-
-        <input
-          type="number"
-          step="0.01"
-          value={value.price}
-          onChange={(event) =>
-            onChange({
-              price: event.target.value,
-            })
-          }
-          className={inputClass}
-        />
-
-      </Field>
-
-      <Field label="Menü Sırası">
-
-        <input
-          type="number"
-          value={value.sort_order}
-          onChange={(event) =>
-            onChange({
-              sort_order: event.target.value,
-            })
-          }
-          className={inputClass}
-        />
-
-      </Field>
-
+        <Field label="🇷🇺 Вес / Порция">
+          <input
+            value={value.portion_ru}
+            onChange={(event) =>
+              onChange({
+                portion_ru:
+                  event.target.value,
+              })
+            }
+            placeholder="200 г, 6 шт., багет 110 г"
+            className={inputClass}
+          />
+        </Field>
+      </div>
     </div>
   );
 }
