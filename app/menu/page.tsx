@@ -33,9 +33,8 @@ type MenuItem = {
   description_ru: string | null;
 
   price: number | null;
-portion: string | null;
-portion_en: string | null;
-portion_ru: string | null;
+  portion: string | null;
+
   category: string | null;
   category_id: number | null;
 
@@ -505,19 +504,23 @@ export default function MenuPage() {
 
   return (
     <main className="min-h-screen bg-[#f4efe5] text-[#292821]">
-      <header className="sticky top-0 z-40 border-b border-[#6e1f12]/15 bg-[#f4efe5]/95 px-4 py-4 backdrop-blur md:px-8">
+      <header className="sticky top-0 z-40 border-b border-[#6e1f12]/15 bg-[#f4efe5]/95 px-4 py-5 backdrop-blur md:px-8">
         <div className="mx-auto flex max-w-5xl items-center justify-between gap-4">
-          <a
-            href="/"
-            className="min-w-0"
-            aria-label="Leman's Deli ana sayfa"
-          >
-            <img
-              src="/logo-horizontal.png"
-              alt="Leman's Deli"
-              className="h-12 w-auto max-w-[180px] object-contain object-left sm:h-14 sm:max-w-[240px]"
-            />
-          </a>
+         <div className="min-w-0">
+  <img
+    src="/logo-horizontal.png"
+    alt="Leman's Deli"
+    className="h-20 w-auto max-w-[320px] object-contain object-left sm:h-24 sm:max-w-[420px]"
+  />
+</div>
+<a
+  href="/home"
+  className="ml-4 text-sm font-medium text-[#6e1f12] transition hover:opacity-70"
+>
+  {language === "tr" && "🏠 Ana Sayfa"}
+  {language === "en" && "🏠 Home"}
+  {language === "ru" && "🏠 Главная"}
+</a>
 
           <div
             className="flex shrink-0 rounded-full border border-[#6e1f12]/15 bg-white/60 p-1"
@@ -547,6 +550,18 @@ export default function MenuPage() {
       </header>
 
       <div className="mx-auto max-w-5xl px-4 py-8 md:px-8 md:py-12">
+        <div className="mx-auto mb-8 max-w-3xl rounded-2xl border border-[#6e1f12]/10 bg-white/60 px-6 py-4 text-center">
+  <p className="text-sm leading-6 text-[#6e1f12]/80">
+    {language === "tr" &&
+      "🏠 Leman's Deli'nin hikâyesini, galerisini ve iletişim bilgilerini görmek için Ana Sayfa'yı ziyaret edin."}
+
+    {language === "en" &&
+      "🏠 Visit the Homepage to discover Leman's Deli, our story, gallery and contact information."}
+
+    {language === "ru" &&
+      "🏠 Посетите главную страницу, чтобы узнать больше о Leman's Deli, посмотреть галерею и контакты."}
+  </p>
+</div>
         <section className="mb-8 text-center md:mb-10">
           <h1
             className="text-3xl font-bold text-[#6e1f12] md:text-5xl"
