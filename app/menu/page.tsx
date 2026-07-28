@@ -1,6 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { supabase } from "../../lib/supabase";
 
 import Accordion from "../../components/menu/Accordion";
@@ -78,6 +84,10 @@ const texts = {
     vegan: "Vegan",
     vegetarian: "Vejetaryen",
     noAllergen: "Belirtilen alerjen yok",
+    closeCategory: "Kategoriyi Kapat",
+    home: "Ana Sayfa",
+    homeInfo:
+      "Leman's Deli'nin hikâyesi, galerisi ve iletişim bilgileri",
     spicyLevels: [
       "Acısız",
       "Hafif acılı",
@@ -107,6 +117,10 @@ const texts = {
     vegan: "Vegan",
     vegetarian: "Vegetarian",
     noAllergen: "No allergens specified",
+    closeCategory: "Close Category",
+    home: "Home",
+    homeInfo:
+      "Our story, gallery and contact information",
     spicyLevels: [
       "Not spicy",
       "Mildly spicy",
@@ -136,6 +150,10 @@ const texts = {
     vegan: "Веган",
     vegetarian: "Вегетарианское",
     noAllergen: "Аллергены не указаны",
+    closeCategory: "Закрыть категорию",
+    home: "Главная",
+    homeInfo:
+      "Наша история, галерея и контактная информация",
     spicyLevels: [
       "Не острое",
       "Слегка острое",
@@ -145,7 +163,10 @@ const texts = {
     footer:
       "Ассортимент может меняться в зависимости от ежедневного производства и наличия.",
   },
-} satisfies Record<Language, Record<string, string | string[]>>;
+} satisfies Record<
+  Language,
+  Record<string, string | string[]>
+>;
 
 const allergenLabels: Record<
   Language,
@@ -292,7 +313,10 @@ function normalizeSpicyLevel(value: number | null) {
 }
 
 export default function MenuPage() {
-  const [categories, setCategories] = useState<Category[]>([]);
+  const [categories, setCategories] = useState<Category[]>(
+    []
+  );
+
   const [items, setItems] = useState<MenuItem[]>([]);
 
   const [language, setLanguage] =
@@ -305,8 +329,13 @@ export default function MenuPage() {
     useState<number | null>(null);
 
   const [loading, setLoading] = useState(true);
+
   const [error, setError] =
     useState<string | null>(null);
+
+  const categoryRefs = useRef<
+    Record<number, HTMLDivElement | null>
+  >({});
 
   const loadMenu = useCallback(async () => {
     const [categoriesResult, itemsResult] =
@@ -317,7 +346,9 @@ export default function MenuPage() {
             "id, slug, name_tr, name_en, name_ru, sort_order, active"
           )
           .eq("active", true)
-          .order("sort_order", { ascending: true }),
+          .order("sort_order", {
+            ascending: true,
+          }),
 
         supabase
           .from("menu_items")
@@ -346,7 +377,9 @@ export default function MenuPage() {
             `
           )
           .eq("active", true)
-          .order("sort_order", { ascending: true }),
+          .order("sort_order", {
+            ascending: true,
+          }),
       ]);
 
     if (categoriesResult.error) {
@@ -361,7 +394,10 @@ export default function MenuPage() {
     }
 
     if (itemsResult.error) {
-      console.error("MENU ERROR:", itemsResult.error);
+      console.error(
+        "MENU ERROR:",
+        itemsResult.error
+      );
 
       setError(itemsResult.error.message);
       setLoading(false);
@@ -372,7 +408,10 @@ export default function MenuPage() {
       (categoriesResult.data ?? []) as Category[]
     );
 
-    setItems((itemsResult.data ?? []) as MenuItem[]);
+    setItems(
+      (itemsResult.data ?? []) as MenuItem[]
+    );
+
     setError(null);
     setLoading(false);
   }, []);
@@ -419,29 +458,34 @@ export default function MenuPage() {
   const groupedCategories =
     useMemo<GroupedCategory[]>(() => {
       return categories.map((category) => {
-  const categoryItems = items
-    .filter((item) => {
-      if (item.category_id !== null) {
-        return item.category_id === category.id;
-      }
+        const categoryItems = items
+          .filter((item) => {
+            if (item.category_id !== null) {
+              return item.category_id === category.id;
+            }
 
-      return item.category === category.slug;
-    })
-    .sort(
-      (first, second) =>
-        first.sort_order - second.sort_order
-    );
+            return item.category === category.slug;
+          })
+          .sort(
+            (first, second) =>
+              first.sort_order - second.sort_order
+          );
 
-  return {
-    category,
-    items: categoryItems,
-  };
-});
+        return {
+          category,
+          items: categoryItems,
+        };
+      });
     }, [categories, items]);
 
   useEffect(() => {
     if (groupedCategories.length === 0) {
       setOpenCategoryId(null);
+      setOpenProductId(null);
+      return;
+    }
+
+    if (openCategoryId === null) {
       return;
     }
 
@@ -452,9 +496,7 @@ export default function MenuPage() {
       );
 
     if (!currentCategoryStillExists) {
-      setOpenCategoryId(
-        groupedCategories[0].category.id
-      );
+      setOpenCategoryId(null);
       setOpenProductId(null);
     }
   }, [groupedCategories, openCategoryId]);
@@ -465,6 +507,34 @@ export default function MenuPage() {
     );
 
     setOpenProductId(null);
+  }
+
+  function goToCategory(categoryId: number) {
+    setOpenCategoryId(categoryId);
+    setOpenProductId(null);
+
+    window.setTimeout(() => {
+      categoryRefs.current[
+        categoryId
+      ]?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    }, 100);
+  }
+
+  function closeCategory(categoryId: number) {
+    setOpenCategoryId(null);
+    setOpenProductId(null);
+
+    window.setTimeout(() => {
+      categoryRefs.current[
+        categoryId
+      ]?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    }, 50);
   }
 
   function changeLanguage(nextLanguage: Language) {
@@ -480,7 +550,9 @@ export default function MenuPage() {
 
           <p
             className="text-lg text-[#6e1f12]"
-            style={{ fontFamily: BRAND_FONT }}
+            style={{
+              fontFamily: BRAND_FONT,
+            }}
           >
             {texts[language].loading as string}
           </p>
@@ -494,7 +566,9 @@ export default function MenuPage() {
       <main className="flex min-h-screen items-center justify-center bg-[#f4efe5] px-5">
         <p
           className="text-center text-lg text-[#6e1f12]"
-          style={{ fontFamily: BRAND_FONT }}
+          style={{
+            fontFamily: BRAND_FONT,
+          }}
         >
           {texts[language].error as string}
         </p>
@@ -504,23 +578,22 @@ export default function MenuPage() {
 
   return (
     <main className="min-h-screen bg-[#f4efe5] text-[#292821]">
-      <header className="sticky top-0 z-40 border-b border-[#6e1f12]/15 bg-[#f4efe5]/95 px-4 py-5 backdrop-blur md:px-8">
-        <div className="mx-auto flex max-w-5xl items-center justify-between gap-4">
-         <div className="min-w-0">
-  <img
-    src="/logo-horizontal.png"
-    alt="Leman's Deli"
-    className="h-20 w-auto max-w-[320px] object-contain object-left sm:h-24 sm:max-w-[420px]"
-  />
-</div>
-<a
-  href="/home"
-  className="ml-4 text-sm font-medium text-[#6e1f12] transition hover:opacity-70"
->
-  {language === "tr" && "🏠 Ana Sayfa"}
-  {language === "en" && "🏠 Home"}
-  {language === "ru" && "🏠 Главная"}
-</a>
+      <header className="sticky top-0 z-40 border-b border-[#6e1f12]/15 bg-[#f4efe5]/95 px-4 py-4 backdrop-blur md:px-8">
+        <div className="mx-auto flex max-w-5xl items-center justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <img
+              src="/logo-horizontal.png"
+              alt="Leman's Deli"
+              className="h-20 w-auto max-w-full object-contain object-left sm:h-24"
+            />
+          </div>
+
+          <a
+            href="/home"
+            className="hidden shrink-0 rounded-full border border-[#6e1f12]/20 bg-white/60 px-4 py-2 text-sm font-bold text-[#6e1f12] transition hover:bg-[#6e1f12] hover:text-white sm:block"
+          >
+            🏠 {texts[language].home as string}
+          </a>
 
           <div
             className="flex shrink-0 rounded-full border border-[#6e1f12]/15 bg-white/60 p-1"
@@ -535,7 +608,7 @@ export default function MenuPage() {
                     changeLanguage(option)
                   }
                   aria-pressed={language === option}
-                  className={`rounded-full px-3 py-2 text-xs font-bold transition sm:px-4 sm:text-sm ${
+                  className={`rounded-full px-2.5 py-2 text-xs font-bold transition sm:px-4 sm:text-sm ${
                     language === option
                       ? "bg-[#6e1f12] text-white"
                       : "text-[#6e1f12] hover:bg-[#6e1f12]/5"
@@ -549,23 +622,26 @@ export default function MenuPage() {
         </div>
       </header>
 
-      <div className="mx-auto max-w-5xl px-4 py-8 md:px-8 md:py-12">
-        <div className="mx-auto mb-8 max-w-3xl rounded-2xl border border-[#6e1f12]/10 bg-white/60 px-6 py-4 text-center">
-  <p className="text-sm leading-6 text-[#6e1f12]/80">
-    {language === "tr" &&
-      "🏠 Leman's Deli'nin hikâyesini, galerisini ve iletişim bilgilerini görmek için Ana Sayfa'yı ziyaret edin."}
+      <div className="mx-auto max-w-5xl px-4 py-7 md:px-8 md:py-10">
+        <a
+          href="/home"
+          className="mx-auto mb-7 block max-w-3xl rounded-2xl border border-[#6e1f12]/10 bg-white/60 px-5 py-4 text-center transition hover:border-[#6e1f12]/25 hover:bg-white/80"
+        >
+          <span className="block text-sm font-bold text-[#6e1f12] sm:hidden">
+            🏠 {texts[language].home as string}
+          </span>
 
-    {language === "en" &&
-      "🏠 Visit the Homepage to discover Leman's Deli, our story, gallery and contact information."}
+          <span className="mt-1 block text-xs leading-5 text-[#6e1f12]/65 sm:mt-0 sm:text-sm">
+            {texts[language].homeInfo as string}
+          </span>
+        </a>
 
-    {language === "ru" &&
-      "🏠 Посетите главную страницу, чтобы узнать больше о Leman's Deli, посмотреть галерею и контакты."}
-  </p>
-</div>
-        <section className="mb-8 text-center md:mb-10">
+        <section className="mb-7 text-center md:mb-9">
           <h1
             className="text-3xl font-bold text-[#6e1f12] md:text-5xl"
-            style={{ fontFamily: BRAND_FONT }}
+            style={{
+              fontFamily: BRAND_FONT,
+            }}
           >
             {texts[language].title as string}
           </h1>
@@ -574,6 +650,39 @@ export default function MenuPage() {
             {texts[language].subtitle as string}
           </p>
         </section>
+
+        {groupedCategories.length > 0 && (
+          <nav className="sticky top-[112px] z-30 -mx-4 mb-5 border-y border-[#6e1f12]/10 bg-[#f4efe5]/95 px-4 py-3 backdrop-blur sm:top-[128px] md:-mx-8 md:px-8">
+            <div className="mx-auto flex max-w-5xl gap-2 overflow-x-auto pb-1">
+              {groupedCategories.map(
+                ({ category }) => {
+                  const selected =
+                    openCategoryId === category.id;
+
+                  return (
+                    <button
+                      key={category.id}
+                      type="button"
+                      onClick={() =>
+                        goToCategory(category.id)
+                      }
+                      className={`shrink-0 rounded-full border px-4 py-2 text-sm font-bold transition ${
+                        selected
+                          ? "border-[#6e1f12] bg-[#6e1f12] text-white"
+                          : "border-[#6e1f12]/20 bg-white/60 text-[#6e1f12] hover:bg-[#6e1f12]/5"
+                      }`}
+                    >
+                      {getCategoryName(
+                        category,
+                        language
+                      )}
+                    </button>
+                  );
+                }
+              )}
+            </div>
+          </nav>
+        )}
 
         {groupedCategories.length === 0 ? (
           <div className="rounded-2xl border border-[#6e1f12]/10 bg-white/60 px-6 py-12 text-center">
@@ -584,168 +693,230 @@ export default function MenuPage() {
         ) : (
           <div className="space-y-3 md:space-y-4">
             {groupedCategories.map(
-              ({ category, items: categoryItems }) => {
+              ({
+                category,
+                items: categoryItems,
+              }) => {
                 const categoryOpen =
                   openCategoryId === category.id;
 
                 return (
-                  <Accordion
+                  <div
                     key={category.id}
-                    title={getCategoryName(
-                      category,
-                      language
-                    )}
-                    count={categoryItems.length}
-                    open={categoryOpen}
-                    onToggle={() =>
-                      toggleCategory(category.id)
-                    }
+                    ref={(element) => {
+                      categoryRefs.current[
+                        category.id
+                      ] = element;
+                    }}
+                    className="scroll-mt-44 sm:scroll-mt-48"
                   >
-                    {categoryItems.length === 0 ? (
-                      <p className="px-6 py-7 text-sm text-[#292821]/45">
-                        {
-                          texts[language]
-                            .emptyCategory as string
-                        }
-                      </p>
-                    ) : (
-                      categoryItems.map((item) => {
-                        const productOpen =
-                          openProductId === item.id;
-
-                        const name = getProductName(
-                          item,
-                          language
-                        );
-
-                        const description =
-                          getProductDescription(
-                            item,
-                            language
-                          );
-
-                        const dietaryLabel =
-                          getDietaryLabel(
-                            item.dietary,
-                            language
-                          );
-
-                        const spicyLevel =
-                          normalizeSpicyLevel(
-                            item.spicy_level
-                          );
-
-                        const details: {
-                          label: string;
-                          value: string;
-                        }[] = [];
-
-                        if (item.portion) {
-                          details.push({
-                            label:
+                    <Accordion
+                      title={getCategoryName(
+                        category,
+                        language
+                      )}
+                      count={categoryItems.length}
+                      open={categoryOpen}
+                      onToggle={() =>
+                        toggleCategory(category.id)
+                      }
+                    >
+                      {categoryItems.length === 0 ? (
+                        <>
+                          <p className="px-6 py-7 text-sm text-[#292821]/45">
+                            {
                               texts[language]
-                                .portion as string,
-                            value: item.portion,
-                          });
-                        }
+                                .emptyCategory as string
+                            }
+                          </p>
 
-                        if (
-                          item.calories_per_portion !==
-                          null
-                        ) {
-                          details.push({
-                            label:
-                              texts[language]
-                                .calories as string,
-                            value: `${item.calories_per_portion} kcal`,
-                          });
-                        }
-
-                        if (
-                          item.calories_per_100g !== null
-                        ) {
-                          details.push({
-                            label:
-                              texts[language]
-                                .calories100 as string,
-                            value: `${item.calories_per_100g} kcal`,
-                          });
-                        }
-
-                        if (dietaryLabel) {
-                          details.push({
-                            label:
-                              texts[language]
-                                .dietary as string,
-                            value: dietaryLabel,
-                          });
-                        }
-
-                        if (spicyLevel > 0) {
-                          const spicyLevels = texts[
-                            language
-                          ].spicyLevels as string[];
-
-                          details.push({
-                            label:
-                              texts[language]
-                                .spicy as string,
-                            value:
-                              spicyLevels[spicyLevel],
-                          });
-                        }
-
-                        return (
-                          <article
-                            key={item.id}
-                            className="border-b border-[#6e1f12]/10 last:border-b-0"
-                          >
-                            <ProductRow
-                              name={name}
-                              description={description}
-                              portion={item.portion}
-                              calories={
-                                item.calories_per_portion
-                              }
-                              dietaryLabel={
-                                dietaryLabel
-                              }
-                              price={item.price}
-                              open={productOpen}
-                              onToggle={() =>
-                                setOpenProductId(
-                                  productOpen
-                                    ? null
-                                    : item.id
+                          <div className="border-t border-[#6e1f12]/10 px-4 py-4 text-center">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                closeCategory(
+                                  category.id
                                 )
                               }
-                            />
+                              className="rounded-full border border-[#6e1f12]/25 bg-[#f4efe5] px-5 py-2.5 text-sm font-bold text-[#6e1f12] transition hover:bg-[#6e1f12] hover:text-white"
+                            >
+                              ↑{" "}
+                              {
+                                texts[language]
+                                  .closeCategory as string
+                              }
+                            </button>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          {categoryItems.map((item) => {
+                            const productOpen =
+                              openProductId === item.id;
 
-                            {productOpen && (
-                              <ProductDetail
-                                name={name}
-                                imageUrl={item.image_url}
-                                description={description}
-                                details={details}
-                                allergens={getAllergenLabels(
-                                  item.allergens,
-                                  language
+                            const name =
+                              getProductName(
+                                item,
+                                language
+                              );
+
+                            const description =
+                              getProductDescription(
+                                item,
+                                language
+                              );
+
+                            const dietaryLabel =
+                              getDietaryLabel(
+                                item.dietary,
+                                language
+                              );
+
+                            const spicyLevel =
+                              normalizeSpicyLevel(
+                                item.spicy_level
+                              );
+
+                            const details: {
+                              label: string;
+                              value: string;
+                            }[] = [];
+
+                            if (item.portion) {
+                              details.push({
+                                label:
+                                  texts[language]
+                                    .portion as string,
+                                value: item.portion,
+                              });
+                            }
+
+                            if (
+                              item.calories_per_portion !==
+                              null
+                            ) {
+                              details.push({
+                                label:
+                                  texts[language]
+                                    .calories as string,
+                                value: `${item.calories_per_portion} kcal`,
+                              });
+                            }
+
+                            if (
+                              item.calories_per_100g !==
+                              null
+                            ) {
+                              details.push({
+                                label:
+                                  texts[language]
+                                    .calories100 as string,
+                                value: `${item.calories_per_100g} kcal`,
+                              });
+                            }
+
+                            if (dietaryLabel) {
+                              details.push({
+                                label:
+                                  texts[language]
+                                    .dietary as string,
+                                value: dietaryLabel,
+                              });
+                            }
+
+                            if (spicyLevel > 0) {
+                              const spicyLevels = texts[
+                                language
+                              ].spicyLevels as string[];
+
+                              details.push({
+                                label:
+                                  texts[language]
+                                    .spicy as string,
+                                value:
+                                  spicyLevels[
+                                    spicyLevel
+                                  ],
+                              });
+                            }
+
+                            return (
+                              <article
+                                key={item.id}
+                                className="border-b border-[#6e1f12]/10 last:border-b-0"
+                              >
+                                <ProductRow
+                                  name={name}
+                                  description={
+                                    description
+                                  }
+                                  portion={item.portion}
+                                  calories={
+                                    item.calories_per_portion
+                                  }
+                                  dietaryLabel={
+                                    dietaryLabel
+                                  }
+                                  price={item.price}
+                                  open={productOpen}
+                                  onToggle={() =>
+                                    setOpenProductId(
+                                      productOpen
+                                        ? null
+                                        : item.id
+                                    )
+                                  }
+                                />
+
+                                {productOpen && (
+                                  <ProductDetail
+                                    name={name}
+                                    imageUrl={
+                                      item.image_url
+                                    }
+                                    description={
+                                      description
+                                    }
+                                    details={details}
+                                    allergens={getAllergenLabels(
+                                      item.allergens,
+                                      language
+                                    )}
+                                    allergensTitle={
+                                      texts[language]
+                                        .allergens as string
+                                    }
+                                    noAllergenText={
+                                      texts[language]
+                                        .noAllergen as string
+                                    }
+                                  />
                                 )}
-                                allergensTitle={
-                                  texts[language]
-                                    .allergens as string
-                                }
-                                noAllergenText={
-                                  texts[language]
-                                    .noAllergen as string
-                                }
-                              />
-                            )}
-                          </article>
-                        );
-                      })
-                    )}
-                  </Accordion>
+                              </article>
+                            );
+                          })}
+
+                          <div className="border-t border-[#6e1f12]/10 px-4 py-4 text-center">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                closeCategory(
+                                  category.id
+                                )
+                              }
+                              className="rounded-full border border-[#6e1f12]/25 bg-[#f4efe5] px-5 py-2.5 text-sm font-bold text-[#6e1f12] transition hover:bg-[#6e1f12] hover:text-white"
+                            >
+                              ↑{" "}
+                              {
+                                texts[language]
+                                  .closeCategory as string
+                              }
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </Accordion>
+                  </div>
                 );
               }
             )}
