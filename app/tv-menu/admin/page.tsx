@@ -275,26 +275,6 @@ function getStoragePathFromPublicUrl(url: string) {
   return decodeURIComponent(url.slice(index + marker.length));
 }
 
-async function triggerTrendyolGoSync() {
-  try {
-    const response = await fetch(
-      "/api/integrations/trendyolgo/process-queue",
-      { method: "POST" }
-    );
-
-    if (!response.ok) {
-      const text = await response.text();
-      console.error("Trendyol Go sync başarısız:", text);
-      return;
-    }
-
-    const data = await response.json().catch(() => null);
-    console.log("Trendyol Go sync:", data);
-  } catch (error) {
-    console.error("Trendyol Go sync tetiklenemedi:", error);
-  }
-}
-
 export default function TvMenuAdminPage() {
   const [items, setItems] = useState<MenuItem[]>([]);
   const [drafts, setDrafts] = useState<Record<number, DraftItem>>({});
@@ -330,6 +310,33 @@ export default function TvMenuAdminPage() {
 
   const [newImageFile, setNewImageFile] = useState<File | null>(null);
   const [newImagePreview, setNewImagePreview] = useState("");
+
+  async function triggerTrendyolGoSync() {
+    try {
+      const response = await fetch(
+        "/api/integrations/trendyolgo/process-queue",
+        {
+          method: "POST",
+          cache: "no-store",
+        }
+      );
+
+      if (!response.ok) {
+        const body = await response.text();
+
+        console.error(
+          "Trendyol Go senkronizasyonu tetiklenemedi:",
+          response.status,
+          body
+        );
+      }
+    } catch (error) {
+      console.error(
+        "Trendyol Go senkronizasyonu tetiklenemedi:",
+        error
+      );
+    }
+  }
 
   async function loadItems() {
     setLoading(true);
@@ -472,7 +479,7 @@ export default function TvMenuAdminPage() {
 
     updateDraft(item.id, { active });
 
-    void triggerTrendyolGoSync();
+    await triggerTrendyolGoSync();
 
     setSavingId(null);
   }
@@ -549,8 +556,7 @@ export default function TvMenuAdminPage() {
     }
 
     await loadItems();
-
-    void triggerTrendyolGoSync();
+    await triggerTrendyolGoSync();
 
     setSavingId(null);
   }
@@ -591,8 +597,6 @@ export default function TvMenuAdminPage() {
             : item
         )
       );
-
-      void triggerTrendyolGoSync();
 
       if (oldUrl) {
         const oldPath = getStoragePathFromPublicUrl(oldUrl);
@@ -644,8 +648,6 @@ export default function TvMenuAdminPage() {
     if (path) {
       await supabase.storage.from("menu-images").remove([path]);
     }
-
-    void triggerTrendyolGoSync();
 
     setUploadingId(null);
   }
@@ -752,6 +754,8 @@ portion_ru: newItem.portion_ru.trim() || null,
 
       if (error) throw error;
 
+      await triggerTrendyolGoSync();
+
       setNewItem(emptyDraft(newItem.category));
 
       if (newImagePreview) {
@@ -764,8 +768,6 @@ portion_ru: newItem.portion_ru.trim() || null,
       setNewProductOpen(false);
 
       await loadItems();
-
-      void triggerTrendyolGoSync();
     } catch (error) {
       alert(
         error instanceof Error
