@@ -1,0 +1,24 @@
+
+> lemans-deli-website@0.1.0 build
+> next build
+
+▲ Next.js 16.2.10 (Turbopack)
+- Environments: .env.local
+
+  Creating an optimized production build ...
+✓ Compiled successfully in 2.4s
+  Running TypeScript ...
+Failed to type check.
+
+./app/pos/page.tsx:246:26
+Type error: Argument of type 'number | null' is not assignable to parameter of type 'number'.
+  Type 'null' is not assignable to type 'number'.
+
+  [90m244 |[0m         [36mif[0m (error) [36mthrow[0m error;
+  [90m245 |[0m       }
+[31m[1m>[0m [90m246 |[0m       [36mawait[0m replaceItems(targetOrderId);
+  [90m    |[0m                          [31m[1m^[0m
+  [90m247 |[0m       [36mawait[0m loadData();
+  [90m248 |[0m       alert(orderType === [32m"Masa"[0m ? [32m"Adisyon masaya kaydedildi."[0m : [32m"Sipariş beklemeye alın...[0m
+  [90m249 |[0m     } [36mcatch[0m (error) {
+Next.js build worker exited with code: 1 and signal: null

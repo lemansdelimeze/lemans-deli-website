@@ -243,8 +243,12 @@ export default function PosPage() {
         const { error } = await supabase.from("pos_orders").update(values).eq("id", targetOrderId);
         if (error) throw error;
       }
-      await replaceItems(targetOrderId);
-      await loadData();
+     if (!targetOrderId) {
+  throw new Error("Sipariş ID oluşturulamadı.");
+}
+
+await replaceItems(targetOrderId);
+await loadData();
       alert(orderType === "Masa" ? "Adisyon masaya kaydedildi." : "Sipariş beklemeye alındı.");
     } catch (error) {
       alert(error instanceof Error ? error.message : "Kaydedilemedi.");
@@ -307,6 +311,11 @@ export default function PosPage() {
         const { error } = await supabase.from("pos_orders").update(values).eq("id", targetOrderId);
         if (error) throw error;
       }
+
+      if (!targetOrderId) {
+        throw new Error("Adisyon ID oluşturulamadı.");
+      }
+
       await replaceItems(targetOrderId);
 
       const { error: stockError } = await supabase.rpc(
