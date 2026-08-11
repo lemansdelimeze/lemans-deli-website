@@ -1,15 +1,8 @@
 "use client";
 
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "../../lib/supabase";
 
-import Accordion from "../../components/menu/Accordion";
 import ProductRow from "../../components/menu/ProductRow";
 import ProductDetail from "../../components/menu/ProductDetail";
 
@@ -67,6 +60,7 @@ const BRAND_FONT =
 
 const texts = {
   tr: {
+    home: "Ana Sayfa",
     title: "Günün Menüsü",
     subtitle:
       "Günlük hazırlanan mezeler, şarküteri ürünleri, sandviçler, sosisliler ve tostlar.",
@@ -84,10 +78,6 @@ const texts = {
     vegan: "Vegan",
     vegetarian: "Vejetaryen",
     noAllergen: "Belirtilen alerjen yok",
-    closeCategory: "Kategoriyi Kapat",
-    home: "Ana Sayfa",
-    homeInfo:
-      "Leman's Deli'nin hikâyesi, galerisi ve iletişim bilgileri",
     spicyLevels: [
       "Acısız",
       "Hafif acılı",
@@ -99,6 +89,7 @@ const texts = {
   },
 
   en: {
+    home: "Homepage",
     title: "Today’s Menu",
     subtitle:
       "Fresh meze, delicatessen products, sandwiches, hot dogs and toasted sandwiches.",
@@ -117,10 +108,6 @@ const texts = {
     vegan: "Vegan",
     vegetarian: "Vegetarian",
     noAllergen: "No allergens specified",
-    closeCategory: "Close Category",
-    home: "Home",
-    homeInfo:
-      "Our story, gallery and contact information",
     spicyLevels: [
       "Not spicy",
       "Mildly spicy",
@@ -132,6 +119,7 @@ const texts = {
   },
 
   ru: {
+    home: "Главная",
     title: "Меню на сегодня",
     subtitle:
       "Свежие мезе, деликатесы, сэндвичи, хот-доги и тосты.",
@@ -150,10 +138,6 @@ const texts = {
     vegan: "Веган",
     vegetarian: "Вегетарианское",
     noAllergen: "Аллергены не указаны",
-    closeCategory: "Закрыть категорию",
-    home: "Главная",
-    homeInfo:
-      "Наша история, галерея и контактная информация",
     spicyLevels: [
       "Не острое",
       "Слегка острое",
@@ -163,10 +147,7 @@ const texts = {
     footer:
       "Ассортимент может меняться в зависимости от ежедневного производства и наличия.",
   },
-} satisfies Record<
-  Language,
-  Record<string, string | string[]>
->;
+} satisfies Record<Language, Record<string, string | string[]>>;
 
 const allergenLabels: Record<
   Language,
@@ -313,10 +294,7 @@ function normalizeSpicyLevel(value: number | null) {
 }
 
 export default function MenuPage() {
-  const [categories, setCategories] = useState<Category[]>(
-    []
-  );
-
+  const [categories, setCategories] = useState<Category[]>([]);
   const [items, setItems] = useState<MenuItem[]>([]);
 
   const [language, setLanguage] =
@@ -329,13 +307,8 @@ export default function MenuPage() {
     useState<number | null>(null);
 
   const [loading, setLoading] = useState(true);
-
   const [error, setError] =
     useState<string | null>(null);
-
-  const categoryRefs = useRef<
-    Record<number, HTMLDivElement | null>
-  >({});
 
   const loadMenu = useCallback(async () => {
     const [categoriesResult, itemsResult] =
@@ -346,9 +319,7 @@ export default function MenuPage() {
             "id, slug, name_tr, name_en, name_ru, sort_order, active"
           )
           .eq("active", true)
-          .order("sort_order", {
-            ascending: true,
-          }),
+          .order("sort_order", { ascending: true }),
 
         supabase
           .from("menu_items")
@@ -377,9 +348,7 @@ export default function MenuPage() {
             `
           )
           .eq("active", true)
-          .order("sort_order", {
-            ascending: true,
-          }),
+          .order("sort_order", { ascending: true }),
       ]);
 
     if (categoriesResult.error) {
@@ -394,10 +363,7 @@ export default function MenuPage() {
     }
 
     if (itemsResult.error) {
-      console.error(
-        "MENU ERROR:",
-        itemsResult.error
-      );
+      console.error("MENU ERROR:", itemsResult.error);
 
       setError(itemsResult.error.message);
       setLoading(false);
@@ -408,10 +374,7 @@ export default function MenuPage() {
       (categoriesResult.data ?? []) as Category[]
     );
 
-    setItems(
-      (itemsResult.data ?? []) as MenuItem[]
-    );
-
+    setItems((itemsResult.data ?? []) as MenuItem[]);
     setError(null);
     setLoading(false);
   }, []);
@@ -458,34 +421,29 @@ export default function MenuPage() {
   const groupedCategories =
     useMemo<GroupedCategory[]>(() => {
       return categories.map((category) => {
-        const categoryItems = items
-          .filter((item) => {
-            if (item.category_id !== null) {
-              return item.category_id === category.id;
-            }
+  const categoryItems = items
+    .filter((item) => {
+      if (item.category_id !== null) {
+        return item.category_id === category.id;
+      }
 
-            return item.category === category.slug;
-          })
-          .sort(
-            (first, second) =>
-              first.sort_order - second.sort_order
-          );
+      return item.category === category.slug;
+    })
+    .sort(
+      (first, second) =>
+        first.sort_order - second.sort_order
+    );
 
-        return {
-          category,
-          items: categoryItems,
-        };
-      });
+  return {
+    category,
+    items: categoryItems,
+  };
+});
     }, [categories, items]);
 
   useEffect(() => {
     if (groupedCategories.length === 0) {
       setOpenCategoryId(null);
-      setOpenProductId(null);
-      return;
-    }
-
-    if (openCategoryId === null) {
       return;
     }
 
@@ -496,7 +454,9 @@ export default function MenuPage() {
       );
 
     if (!currentCategoryStillExists) {
-      setOpenCategoryId(null);
+      setOpenCategoryId(
+        groupedCategories[0].category.id
+      );
       setOpenProductId(null);
     }
   }, [groupedCategories, openCategoryId]);
@@ -507,34 +467,6 @@ export default function MenuPage() {
     );
 
     setOpenProductId(null);
-  }
-
-  function goToCategory(categoryId: number) {
-    setOpenCategoryId(categoryId);
-    setOpenProductId(null);
-
-    window.setTimeout(() => {
-      categoryRefs.current[
-        categoryId
-      ]?.scrollIntoView({
-        behavior: "smooth",
-        block: "start",
-      });
-    }, 100);
-  }
-
-  function closeCategory(categoryId: number) {
-    setOpenCategoryId(null);
-    setOpenProductId(null);
-
-    window.setTimeout(() => {
-      categoryRefs.current[
-        categoryId
-      ]?.scrollIntoView({
-        behavior: "smooth",
-        block: "start",
-      });
-    }, 50);
   }
 
   function changeLanguage(nextLanguage: Language) {
@@ -550,9 +482,7 @@ export default function MenuPage() {
 
           <p
             className="text-lg text-[#6e1f12]"
-            style={{
-              fontFamily: BRAND_FONT,
-            }}
+            style={{ fontFamily: BRAND_FONT }}
           >
             {texts[language].loading as string}
           </p>
@@ -566,9 +496,7 @@ export default function MenuPage() {
       <main className="flex min-h-screen items-center justify-center bg-[#f4efe5] px-5">
         <p
           className="text-center text-lg text-[#6e1f12]"
-          style={{
-            fontFamily: BRAND_FONT,
-          }}
+          style={{ fontFamily: BRAND_FONT }}
         >
           {texts[language].error as string}
         </p>
@@ -580,68 +508,70 @@ export default function MenuPage() {
     <main className="min-h-screen bg-[#f4efe5] text-[#292821]">
       <header className="sticky top-0 z-40 border-b border-[#6e1f12]/15 bg-[#f4efe5]/95 px-4 py-4 backdrop-blur md:px-8">
         <div className="mx-auto flex max-w-5xl items-center justify-between gap-3">
-          <div className="min-w-0 flex-1">
+          <a
+            href="/home"
+            className="min-w-0"
+            aria-label="Leman's Deli homepage"
+          >
             <img
               src="/logo-horizontal.png"
               alt="Leman's Deli"
-              className="h-20 w-auto max-w-full object-contain object-left sm:h-24"
+              className="h-12 w-auto max-w-[150px] object-contain object-left sm:h-14 sm:max-w-[240px]"
             />
-          </div>
-
-          <a
-            href="/home"
-            className="hidden shrink-0 rounded-full border border-[#6e1f12]/20 bg-white/60 px-4 py-2 text-sm font-bold text-[#6e1f12] transition hover:bg-[#6e1f12] hover:text-white sm:block"
-          >
-            🏠 {texts[language].home as string}
           </a>
 
-          <div
-            className="flex shrink-0 rounded-full border border-[#6e1f12]/15 bg-white/60 p-1"
-            aria-label="Dil seçimi"
-          >
-            {(["tr", "en", "ru"] as Language[]).map(
-              (option) => (
-                <button
-                  key={option}
-                  type="button"
-                  onClick={() =>
-                    changeLanguage(option)
-                  }
-                  aria-pressed={language === option}
-                  className={`rounded-full px-2.5 py-2 text-xs font-bold transition sm:px-4 sm:text-sm ${
-                    language === option
-                      ? "bg-[#6e1f12] text-white"
-                      : "text-[#6e1f12] hover:bg-[#6e1f12]/5"
-                  }`}
-                >
-                  {option.toUpperCase()}
-                </button>
-              )
-            )}
+          <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+            <a
+              href="/home"
+              className="hidden rounded-full border border-[#6e1f12]/15 bg-white/60 px-4 py-2 text-xs font-bold text-[#6e1f12] transition hover:bg-[#6e1f12] hover:text-white sm:inline-flex sm:text-sm"
+              style={{ fontFamily: BRAND_FONT }}
+            >
+              {texts[language].home as string}
+            </a>
+
+            <div
+              className="flex rounded-full border border-[#6e1f12]/15 bg-white/60 p-1"
+              aria-label="Dil seçimi"
+            >
+              {(["tr", "en", "ru"] as Language[]).map(
+                (option) => (
+                  <button
+                    key={option}
+                    type="button"
+                    onClick={() =>
+                      changeLanguage(option)
+                    }
+                    aria-pressed={language === option}
+                    className={`rounded-full px-2.5 py-2 text-xs font-bold transition sm:px-4 sm:text-sm ${
+                      language === option
+                        ? "bg-[#6e1f12] text-white"
+                        : "text-[#6e1f12] hover:bg-[#6e1f12]/5"
+                    }`}
+                  >
+                    {option.toUpperCase()}
+                  </button>
+                )
+              )}
+            </div>
           </div>
         </div>
       </header>
 
-      <div className="mx-auto max-w-5xl px-4 py-7 md:px-8 md:py-10">
-        <a
-          href="/home"
-          className="mx-auto mb-7 block max-w-3xl rounded-2xl border border-[#6e1f12]/10 bg-white/60 px-5 py-4 text-center transition hover:border-[#6e1f12]/25 hover:bg-white/80"
-        >
-          <span className="block text-sm font-bold text-[#6e1f12] sm:hidden">
-            🏠 {texts[language].home as string}
-          </span>
+      <div className="mx-auto max-w-5xl px-4 py-8 md:px-8 md:py-12">
+        <div className="mb-6 flex justify-center sm:hidden">
+          <a
+            href="/home"
+            className="inline-flex rounded-full border border-[#6e1f12]/15 bg-white/60 px-5 py-2.5 text-sm font-bold text-[#6e1f12] transition hover:bg-[#6e1f12] hover:text-white"
+            style={{ fontFamily: BRAND_FONT }}
+          >
+            {texts[language].home as string}
+          </a>
+        </div>
 
-          <span className="mt-1 block text-xs leading-5 text-[#6e1f12]/65 sm:mt-0 sm:text-sm">
-            {texts[language].homeInfo as string}
-          </span>
-        </a>
-
-        <section className="mb-7 text-center md:mb-9">
+        <section className="mb-8 text-center md:mb-10">
           <h1
             className="text-3xl font-bold text-[#6e1f12] md:text-5xl"
-            style={{
-              fontFamily: BRAND_FONT,
-            }}
+            style={{ fontFamily: BRAND_FONT }}
           >
             {texts[language].title as string}
           </h1>
@@ -651,39 +581,6 @@ export default function MenuPage() {
           </p>
         </section>
 
-        {groupedCategories.length > 0 && (
-          <nav className="sticky top-[112px] z-30 -mx-4 mb-5 border-y border-[#6e1f12]/10 bg-[#f4efe5]/95 px-4 py-3 backdrop-blur sm:top-[128px] md:-mx-8 md:px-8">
-            <div className="mx-auto flex max-w-5xl gap-2 overflow-x-auto pb-1">
-              {groupedCategories.map(
-                ({ category }) => {
-                  const selected =
-                    openCategoryId === category.id;
-
-                  return (
-                    <button
-                      key={category.id}
-                      type="button"
-                      onClick={() =>
-                        goToCategory(category.id)
-                      }
-                      className={`shrink-0 rounded-full border px-4 py-2 text-sm font-bold transition ${
-                        selected
-                          ? "border-[#6e1f12] bg-[#6e1f12] text-white"
-                          : "border-[#6e1f12]/20 bg-white/60 text-[#6e1f12] hover:bg-[#6e1f12]/5"
-                      }`}
-                    >
-                      {getCategoryName(
-                        category,
-                        language
-                      )}
-                    </button>
-                  );
-                }
-              )}
-            </div>
-          </nav>
-        )}
-
         {groupedCategories.length === 0 ? (
           <div className="rounded-2xl border border-[#6e1f12]/10 bg-white/60 px-6 py-12 text-center">
             <p className="text-sm text-[#292821]/55">
@@ -691,236 +588,164 @@ export default function MenuPage() {
             </p>
           </div>
         ) : (
-          <div className="space-y-3 md:space-y-4">
-            {groupedCategories.map(
-              ({
-                category,
-                items: categoryItems,
-              }) => {
-                const categoryOpen =
-                  openCategoryId === category.id;
+          <>
+            {/* MOBILE: 2-column category grid + selected category products */}
+            <div className="md:hidden">
+              <div className="grid grid-cols-2 gap-2.5">
+                {groupedCategories.map(({ category, items: categoryItems }) => {
+                  const selected = openCategoryId === category.id;
+
+                  return (
+                    <button
+                      key={category.id}
+                      type="button"
+                      onClick={() => {
+                        setOpenCategoryId(category.id);
+                        setOpenProductId(null);
+                      }}
+                      aria-pressed={selected}
+                      className={`min-h-[74px] rounded-2xl border px-3 py-3 text-left transition active:scale-[0.98] ${
+                        selected
+                          ? "border-[#6e1f12] bg-[#6e1f12] text-white shadow-sm"
+                          : "border-[#6e1f12]/12 bg-white/65 text-[#6e1f12]"
+                      }`}
+                    >
+                      <span
+                        className="block text-[15px] font-bold leading-5"
+                        style={{ fontFamily: BRAND_FONT }}
+                      >
+                        {getCategoryName(category, language)}
+                      </span>
+
+                      <span
+                        className={`mt-1.5 block text-[11px] ${
+                          selected ? "text-white/65" : "text-[#292821]/40"
+                        }`}
+                      >
+                        {categoryItems.length} {texts[language].productCount as string}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {(() => {
+                const selectedGroup =
+                  groupedCategories.find(
+                    (group) => group.category.id === openCategoryId
+                  ) ?? groupedCategories[0];
+
+                if (!selectedGroup) return null;
 
                 return (
-                  <div
-                    key={category.id}
-                    ref={(element) => {
-                      categoryRefs.current[
-                        category.id
-                      ] = element;
-                    }}
-                    className="scroll-mt-44 sm:scroll-mt-48"
-                  >
-                    <Accordion
-                      title={getCategoryName(
-                        category,
-                        language
-                      )}
-                      count={categoryItems.length}
-                      open={categoryOpen}
-                      onToggle={() =>
-                        toggleCategory(category.id)
-                      }
-                    >
-                      {categoryItems.length === 0 ? (
-                        <>
-                          <p className="px-6 py-7 text-sm text-[#292821]/45">
-                            {
-                              texts[language]
-                                .emptyCategory as string
-                            }
-                          </p>
+                  <section className="mt-4 overflow-hidden rounded-3xl border border-[#6e1f12]/12 bg-white/65 shadow-[0_8px_30px_rgba(110,31,18,0.04)]">
+                    <div className="border-b border-[#6e1f12]/10 px-5 py-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <h2
+                          className="text-xl font-bold text-[#6e1f12]"
+                          style={{ fontFamily: BRAND_FONT }}
+                        >
+                          {getCategoryName(selectedGroup.category, language)}
+                        </h2>
 
-                          <div className="border-t border-[#6e1f12]/10 px-4 py-4 text-center">
-                            <button
-                              type="button"
-                              onClick={() =>
-                                closeCategory(
-                                  category.id
-                                )
-                              }
-                              className="rounded-full border border-[#6e1f12]/25 bg-[#f4efe5] px-5 py-2.5 text-sm font-bold text-[#6e1f12] transition hover:bg-[#6e1f12] hover:text-white"
-                            >
-                              ↑{" "}
-                              {
-                                texts[language]
-                                  .closeCategory as string
-                              }
-                            </button>
-                          </div>
-                        </>
-                      ) : (
-                        <>
-                          {categoryItems.map((item) => {
-                            const productOpen =
-                              openProductId === item.id;
+                        <span className="shrink-0 rounded-full bg-[#6e1f12]/7 px-3 py-1 text-[11px] font-semibold text-[#6e1f12]/60">
+                          {selectedGroup.items.length} {texts[language].productCount as string}
+                        </span>
+                      </div>
+                    </div>
 
-                            const name =
-                              getProductName(
-                                item,
-                                language
-                              );
-
-                            const description =
-                              getProductDescription(
-                                item,
-                                language
-                              );
-
-                            const dietaryLabel =
-                              getDietaryLabel(
-                                item.dietary,
-                                language
-                              );
-
-                            const spicyLevel =
-                              normalizeSpicyLevel(
-                                item.spicy_level
-                              );
-
-                            const details: {
-                              label: string;
-                              value: string;
-                            }[] = [];
-
-                            if (item.portion) {
-                              details.push({
-                                label:
-                                  texts[language]
-                                    .portion as string,
-                                value: item.portion,
-                              });
-                            }
-
-                            if (
-                              item.calories_per_portion !==
-                              null
-                            ) {
-                              details.push({
-                                label:
-                                  texts[language]
-                                    .calories as string,
-                                value: `${item.calories_per_portion} kcal`,
-                              });
-                            }
-
-                            if (
-                              item.calories_per_100g !==
-                              null
-                            ) {
-                              details.push({
-                                label:
-                                  texts[language]
-                                    .calories100 as string,
-                                value: `${item.calories_per_100g} kcal`,
-                              });
-                            }
-
-                            if (dietaryLabel) {
-                              details.push({
-                                label:
-                                  texts[language]
-                                    .dietary as string,
-                                value: dietaryLabel,
-                              });
-                            }
-
-                            if (spicyLevel > 0) {
-                              const spicyLevels = texts[
-                                language
-                              ].spicyLevels as string[];
-
-                              details.push({
-                                label:
-                                  texts[language]
-                                    .spicy as string,
-                                value:
-                                  spicyLevels[
-                                    spicyLevel
-                                  ],
-                              });
-                            }
-
-                            return (
-                              <article
-                                key={item.id}
-                                className="border-b border-[#6e1f12]/10 last:border-b-0"
-                              >
-                                <ProductRow
-                                  name={name}
-                                  description={
-                                    description
-                                  }
-                                  portion={item.portion}
-                                  calories={
-                                    item.calories_per_portion
-                                  }
-                                  dietaryLabel={
-                                    dietaryLabel
-                                  }
-                                  price={item.price}
-                                  open={productOpen}
-                                  onToggle={() =>
-                                    setOpenProductId(
-                                      productOpen
-                                        ? null
-                                        : item.id
-                                    )
-                                  }
-                                />
-
-                                {productOpen && (
-                                  <ProductDetail
-                                    name={name}
-                                    imageUrl={
-                                      item.image_url
-                                    }
-                                    description={
-                                      description
-                                    }
-                                    details={details}
-                                    allergens={getAllergenLabels(
-                                      item.allergens,
-                                      language
-                                    )}
-                                    allergensTitle={
-                                      texts[language]
-                                        .allergens as string
-                                    }
-                                    noAllergenText={
-                                      texts[language]
-                                        .noAllergen as string
-                                    }
-                                  />
-                                )}
-                              </article>
-                            );
-                          })}
-
-                          <div className="border-t border-[#6e1f12]/10 px-4 py-4 text-center">
-                            <button
-                              type="button"
-                              onClick={() =>
-                                closeCategory(
-                                  category.id
-                                )
-                              }
-                              className="rounded-full border border-[#6e1f12]/25 bg-[#f4efe5] px-5 py-2.5 text-sm font-bold text-[#6e1f12] transition hover:bg-[#6e1f12] hover:text-white"
-                            >
-                              ↑{" "}
-                              {
-                                texts[language]
-                                  .closeCategory as string
-                              }
-                            </button>
-                          </div>
-                        </>
-                      )}
-                    </Accordion>
-                  </div>
+                    <CategoryProducts
+                      items={selectedGroup.items}
+                      language={language}
+                      openProductId={openProductId}
+                      setOpenProductId={setOpenProductId}
+                    />
+                  </section>
                 );
-              }
-            )}
-          </div>
+              })()}
+            </div>
+
+            {/* DESKTOP / TABLET: category selector + only selected category */}
+            <div className="hidden md:block">
+              <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                {groupedCategories.map(({ category, items: categoryItems }) => {
+                  const selected = openCategoryId === category.id;
+
+                  return (
+                    <button
+                      key={category.id}
+                      type="button"
+                      onClick={() => {
+                        setOpenCategoryId(category.id);
+                        setOpenProductId(null);
+                      }}
+                      aria-pressed={selected}
+                      className={`rounded-2xl border px-5 py-4 text-left transition ${
+                        selected
+                          ? "border-[#6e1f12] bg-[#6e1f12] text-white shadow-sm"
+                          : "border-[#6e1f12]/12 bg-white/65 text-[#6e1f12] hover:border-[#6e1f12]/30 hover:bg-white"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <span
+                          className="text-base font-bold"
+                          style={{ fontFamily: BRAND_FONT }}
+                        >
+                          {getCategoryName(category, language)}
+                        </span>
+
+                        <span
+                          className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+                            selected
+                              ? "bg-white/12 text-white/75"
+                              : "bg-[#6e1f12]/7 text-[#6e1f12]/55"
+                          }`}
+                        >
+                          {categoryItems.length}
+                        </span>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {(() => {
+                const selectedGroup =
+                  groupedCategories.find(
+                    (group) => group.category.id === openCategoryId
+                  ) ?? groupedCategories[0];
+
+                if (!selectedGroup) return null;
+
+                return (
+                  <section className="mt-5 overflow-hidden rounded-3xl border border-[#6e1f12]/12 bg-white/65 shadow-[0_8px_30px_rgba(110,31,18,0.04)]">
+                    <div className="border-b border-[#6e1f12]/10 px-6 py-5">
+                      <div className="flex items-center justify-between gap-4">
+                        <h2
+                          className="text-2xl font-bold text-[#6e1f12]"
+                          style={{ fontFamily: BRAND_FONT }}
+                        >
+                          {getCategoryName(selectedGroup.category, language)}
+                        </h2>
+
+                        <span className="rounded-full bg-[#6e1f12]/7 px-3 py-1.5 text-xs font-semibold text-[#6e1f12]/60">
+                          {selectedGroup.items.length}{" "}
+                          {texts[language].productCount as string}
+                        </span>
+                      </div>
+                    </div>
+
+                    <CategoryProducts
+                      items={selectedGroup.items}
+                      language={language}
+                      openProductId={openProductId}
+                      setOpenProductId={setOpenProductId}
+                    />
+                  </section>
+                );
+              })()}
+            </div>
+          </>
         )}
 
         <footer className="mt-10 border-t border-[#6e1f12]/12 pt-6 text-center text-xs leading-5 text-[#292821]/45">
@@ -928,5 +753,108 @@ export default function MenuPage() {
         </footer>
       </div>
     </main>
+  );
+}
+
+function CategoryProducts({
+  items,
+  language,
+  openProductId,
+  setOpenProductId,
+}: {
+  items: MenuItem[];
+  language: Language;
+  openProductId: number | null;
+  setOpenProductId: (id: number | null) => void;
+}) {
+  if (items.length === 0) {
+    return (
+      <p className="px-5 py-7 text-sm text-[#292821]/45 md:px-6">
+        {texts[language].emptyCategory as string}
+      </p>
+    );
+  }
+
+  return (
+    <>
+      {items.map((item) => {
+        const productOpen = openProductId === item.id;
+        const name = getProductName(item, language);
+        const description = getProductDescription(item, language);
+        const dietaryLabel = getDietaryLabel(item.dietary, language);
+        const spicyLevel = normalizeSpicyLevel(item.spicy_level);
+
+        const details: { label: string; value: string }[] = [];
+
+        if (item.portion) {
+          details.push({
+            label: texts[language].portion as string,
+            value: item.portion,
+          });
+        }
+
+        if (item.calories_per_portion !== null) {
+          details.push({
+            label: texts[language].calories as string,
+            value: `${item.calories_per_portion} kcal`,
+          });
+        }
+
+        if (item.calories_per_100g !== null) {
+          details.push({
+            label: texts[language].calories100 as string,
+            value: `${item.calories_per_100g} kcal`,
+          });
+        }
+
+        if (dietaryLabel) {
+          details.push({
+            label: texts[language].dietary as string,
+            value: dietaryLabel,
+          });
+        }
+
+        if (spicyLevel > 0) {
+          const spicyLevels = texts[language].spicyLevels as string[];
+
+          details.push({
+            label: texts[language].spicy as string,
+            value: spicyLevels[spicyLevel],
+          });
+        }
+
+        return (
+          <article
+            key={item.id}
+            className="border-b border-[#6e1f12]/10 last:border-b-0"
+          >
+            <ProductRow
+              name={name}
+              description={description}
+              portion={item.portion}
+              calories={item.calories_per_portion}
+              dietaryLabel={dietaryLabel}
+              price={item.price}
+              open={productOpen}
+              onToggle={() =>
+                setOpenProductId(productOpen ? null : item.id)
+              }
+            />
+
+            {productOpen && (
+              <ProductDetail
+                name={name}
+                imageUrl={item.image_url}
+                description={description}
+                details={details}
+                allergens={getAllergenLabels(item.allergens, language)}
+                allergensTitle={texts[language].allergens as string}
+                noAllergenText={texts[language].noAllergen as string}
+              />
+            )}
+          </article>
+        );
+      })}
+    </>
   );
 }
