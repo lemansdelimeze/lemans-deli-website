@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+
 import { supabaseAdmin } from "../../../../../lib/supabaseAdmin";
 import {
   getTrendyolGoSellerId,
@@ -8,7 +9,7 @@ import {
 type QueueRow = {
   id: number;
   menu_item_id: number;
-  action: "sync" | "create";
+  action: string;
   attempts: number;
 };
 
@@ -54,23 +55,50 @@ function extractProducts(data: TrendyolMenuResponse) {
 
 function normalizeActive(status?: string) {
   const value = String(status || "").toUpperCase();
-  if (["ACTIVE", "OPEN", "ON_SALE"].includes(value)) return true;
-  if (["PASSIVE", "CLOSED", "OFF_SALE"].includes(value)) return false;
+
+  if (["ACTIVE", "OPEN", "ON_SALE"].includes(value)) {
+    return true;
+  }
+
+  if (["PASSIVE", "CLOSED", "OFF_SALE"].includes(value)) {
+    return false;
+  }
+
   return null;
+}
+
+async function markQueue(
+  id: number,
+  values: Record<string, unknown>
+) {
+  const { error } = await supabaseAdmin
+    .from("integration_product_queue")
+    .update({
+      ...values,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", id);
+
+  if (error) throw error;
 }
 
 export async function POST() {
   try {
-    const sellerId = getTrendyolGoSellerId();
-
+    /*
+     * SADECE mapping'i olan ürünlerin "sync" işlerini al.
+     *
+     * action=create olan yeni/eşleşmemiş ürünleri burada işlemiyoruz.
+     * Böylece pendingCreate kayıtları kendi kendini tekrar tetiklemez.
+     */
     const { data: queueData, error: queueError } =
       await supabaseAdmin
         .from("integration_product_queue")
         .select("id,menu_item_id,action,attempts")
         .eq("channel", "trendyol")
         .eq("status", "pending")
-        .order("created_at", { ascending: true })
-        .limit(100);
+        .eq("action", "sync")
+        .order("updated_at", { ascending: true })
+        .limit(50);
 
     if (queueError) throw queueError;
 
@@ -80,48 +108,94 @@ export async function POST() {
       return NextResponse.json({
         ok: true,
         processed: 0,
-        message: "Bekleyen senkronizasyon yok.",
+        message: "Bekleyen Trendyol Go sync işi yok.",
       });
     }
 
-    const tgoMenu = await trendyolGoRequest<TrendyolMenuResponse>(
-      `/integrator/product/meal/suppliers/${sellerId}/stores/${STORE_ID}/products`
-    );
+    const sellerId = getTrendyolGoSellerId();
+
+    /*
+     * Trendyol menüsünü request başına yalnızca bir kez çek.
+     */
+    const tgoMenu =
+      await trendyolGoRequest<TrendyolMenuResponse>(
+        `/integrator/product/meal/suppliers/${sellerId}/stores/${STORE_ID}/products`
+      );
 
     const remoteProducts = extractProducts(tgoMenu);
     const remoteById = new Map<string, TrendyolProduct>();
 
-    for (const p of remoteProducts) {
-      const id = p.productId ?? p.id;
+    for (const product of remoteProducts) {
+      const id = product.productId ?? product.id;
+
       if (id !== undefined && id !== null) {
-        remoteById.set(String(id), p);
+        remoteById.set(String(id), product);
       }
     }
 
-    const results = [];
+    const results: Array<Record<string, unknown>> = [];
 
     for (const row of queue) {
+      /*
+       * İş satırını atomik olarak "processing" durumuna almaya çalış.
+       * Aynı anda iki request gelirse yalnızca biri bu satırı alır.
+       */
+      const { data: claimed, error: claimError } =
+        await supabaseAdmin
+          .from("integration_product_queue")
+          .update({
+            status: "processing",
+            attempts: Number(row.attempts || 0) + 1,
+            last_error: null,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", row.id)
+          .eq("status", "pending")
+          .eq("action", "sync")
+          .select("id")
+          .maybeSingle();
+
+      if (claimError) {
+        results.push({
+          menuItemId: row.menu_item_id,
+          ok: false,
+          error: claimError.message,
+        });
+        continue;
+      }
+
+      /*
+       * Başka bir request satırı önce aldıysa atla.
+       */
+      if (!claimed) {
+        continue;
+      }
+
       try {
         const { data: menuItem, error: menuError } =
           await supabaseAdmin
             .from("menu_items")
-            .select("id,name,name_tr,price,active,category")
+            .select(
+              "id,name,name_tr,price,active,category"
+            )
             .eq("id", row.menu_item_id)
             .single();
 
         if (menuError) throw menuError;
 
         const item = menuItem as MenuItem;
-        const category = String(item.category || "").toLowerCase();
+        const category = String(
+          item.category || ""
+        ).toLowerCase();
 
+        /*
+         * Yemek kanalında peynir ve şarküteri yok.
+         */
         if (EXCLUDED.has(category)) {
-          await supabaseAdmin
-            .from("integration_product_queue")
-            .update({
-              status: "done",
-              updated_at: new Date().toISOString(),
-            })
-            .eq("id", row.id);
+          await markQueue(row.id, {
+            status: "done",
+            last_error: null,
+          });
 
           results.push({
             menuItemId: row.menu_item_id,
@@ -143,44 +217,51 @@ export async function POST() {
 
         if (mappingError) throw mappingError;
 
+        /*
+         * Mapping sonradan silinmişse create kuyruğuna çevir,
+         * AMA status=pending bırakma. Bu processor tekrar tekrar
+         * aynı ürünü işlemeye çalışmasın.
+         */
         if (!mapping) {
-          await supabaseAdmin
-            .from("integration_product_queue")
-            .update({
-              action: "create",
-              status: "pending",
-              attempts: row.attempts + 1,
-              last_error:
-                "Trendyol Go Meal create-product endpointi henüz doğrulanmadı; ürün kuyrukta bekliyor.",
-              updated_at: new Date().toISOString(),
-            })
-            .eq("id", row.id);
+          await markQueue(row.id, {
+            action: "create",
+            status: "waiting_create",
+            last_error:
+              "Trendyol Go ürün eşleştirmesi yok. Yeni ürün aktarımı bekleniyor.",
+          });
 
           results.push({
             menuItemId: row.menu_item_id,
             ok: false,
-            pendingCreate: true,
+            waitingCreate: true,
           });
 
           continue;
         }
 
         const map = mapping as Mapping;
-        const remote = remoteById.get(map.external_product_id);
+        const remote = remoteById.get(
+          map.external_product_id
+        );
 
         if (!remote) {
           throw new Error(
-            `Trendyol ürünü bulunamadı: ${map.external_product_id}`
+            `Trendyol Go ürünü bulunamadı: ${map.external_product_id}`
           );
         }
 
         const localPrice = Number(item.price || 0);
-        const remotePriceRaw = remote.sellingPrice ?? remote.price;
+        const remotePriceRaw =
+          remote.sellingPrice ?? remote.price;
+
         const remotePrice =
-          remotePriceRaw === undefined ? null : Number(remotePriceRaw);
+          remotePriceRaw === undefined
+            ? null
+            : Number(remotePriceRaw);
 
-        const remoteActive = normalizeActive(remote.status);
-
+        /*
+         * 0 veya negatif fiyatı ASLA Trendyol'a gönderme.
+         */
         if (
           localPrice > 0 &&
           remotePrice !== null &&
@@ -194,7 +275,9 @@ export async function POST() {
                 items: [
                   {
                     restaurantId: STORE_ID,
-                    productId: Number(map.external_product_id),
+                    productId: Number(
+                      map.external_product_id
+                    ),
                     sellingPrice: localPrice,
                   },
                 ],
@@ -202,6 +285,10 @@ export async function POST() {
             }
           );
         }
+
+        const remoteActive = normalizeActive(
+          remote.status
+        );
 
         if (
           remoteActive !== null &&
@@ -212,21 +299,18 @@ export async function POST() {
             {
               method: "PUT",
               body: JSON.stringify({
-                status: item.active ? "ACTIVE" : "PASSIVE",
+                status: item.active
+                  ? "ACTIVE"
+                  : "PASSIVE",
               }),
             }
           );
         }
 
-        await supabaseAdmin
-          .from("integration_product_queue")
-          .update({
-            status: "done",
-            attempts: row.attempts + 1,
-            last_error: null,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", row.id);
+        await markQueue(row.id, {
+          status: "done",
+          last_error: null,
+        });
 
         results.push({
           menuItemId: row.menu_item_id,
@@ -234,17 +318,18 @@ export async function POST() {
         });
       } catch (error) {
         const message =
-          error instanceof Error ? error.message : String(error);
+          error instanceof Error
+            ? error.message
+            : String(error);
 
-        await supabaseAdmin
-          .from("integration_product_queue")
-          .update({
-            status: "pending",
-            attempts: row.attempts + 1,
-            last_error: message,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", row.id);
+        /*
+         * Hata olursa yeniden denenebilir, ama pg_net trigger olmadığı
+         * için kendi kendine sonsuz döngü oluşmaz.
+         */
+        await markQueue(row.id, {
+          status: "pending",
+          last_error: message,
+        });
 
         results.push({
           menuItemId: row.menu_item_id,
@@ -256,7 +341,7 @@ export async function POST() {
 
     return NextResponse.json({
       ok: true,
-      processed: queue.length,
+      processed: results.length,
       results,
     });
   } catch (error) {
