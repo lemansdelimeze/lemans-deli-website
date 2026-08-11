@@ -345,7 +345,7 @@ function MenuCategory({
 }) {
   return (
     <section className="menu-section">
-      <div className="mb-[4mm]">
+      <div className="mb-[2.5mm]">
         <h2
           style={{ fontFamily: BRAND_FONT }}
           className="text-[23px] font-semibold leading-none text-[#6e1f12]"
@@ -356,7 +356,7 @@ function MenuCategory({
         <div className="mt-[2.2mm] h-px w-full bg-[#6e1f12]/18" />
       </div>
 
-      <div className="space-y-[4mm]">
+      <div className="space-y-[2.5mm]">
         {items.map((item) => {
           const name =
             item.name_tr ||
@@ -381,7 +381,7 @@ function MenuCategory({
               key={item.id}
               className="menu-item"
             >
-              <div className="flex items-start justify-between gap-[4mm]">
+              <div className="flex items-start justify-between gap-[2.5mm]">
                 <div className="min-w-0 flex-1">
                   <h3
                     style={{
@@ -418,7 +418,7 @@ function MenuCategory({
               </div>
 
               {item.description_tr && (
-                <p className="mt-[1.4mm] max-w-[96%] text-[8.2px] leading-[1.5] text-[#242820]/58">
+                <p className="mt-[1.25mm] max-w-[96%] text-[8.2px] leading-[1.5] text-[#242820]/58">
                   {item.description_tr}
                 </p>
               )}
@@ -426,7 +426,7 @@ function MenuCategory({
               {(dietary ||
                 allergens.length > 0 ||
                 item.calories_per_portion !== null) && (
-                <div className="mt-[1.4mm] flex flex-wrap gap-x-[2.2mm] gap-y-[1mm] text-[6.8px] uppercase tracking-[0.06em]">
+                <div className="mt-[1.25mm] flex flex-wrap gap-x-[2.2mm] gap-y-[1mm] text-[6.8px] uppercase tracking-[0.06em]">
                   {dietary && (
                     <span
                       style={{
