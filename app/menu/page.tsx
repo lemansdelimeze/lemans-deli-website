@@ -62,6 +62,22 @@ type CartItem = {
 
 type OrderType = "pickup" | "delivery";
 
+type PublicOrderSettings = {
+  orderingEnabled: boolean;
+  pickupEnabled: boolean;
+  deliveryEnabled: boolean;
+  autoScheduleEnabled: boolean;
+  openTime: string;
+  closeTime: string;
+  pickupMinimum: number;
+  deliveryMinimum: number;
+  prepTimeMin: number;
+  prepTimeMax: number;
+  closedMessage: string;
+  busyMessage: string | null;
+};
+
+
 const orderTexts = {
   tr: {
     add: "Sepete Ekle",
@@ -406,6 +422,46 @@ export default function MenuPage() {
   const [orderError, setOrderError] = useState<string | null>(null);
   const [orderSuccess, setOrderSuccess] = useState<string | null>(null);
 
+  const [orderSettings, setOrderSettings] =
+    useState<PublicOrderSettings | null>(null);
+  const [acceptingOrders, setAcceptingOrders] = useState(false);
+  const [orderAvailabilityReason, setOrderAvailabilityReason] =
+    useState<string | null>(null);
+
+  const loadOrderSettings = useCallback(async () => {
+    try {
+      const response = await fetch("/api/orders/settings", {
+        cache: "no-store",
+      });
+      const data = (await response.json()) as {
+        ok?: boolean;
+        acceptingOrders?: boolean;
+        reason?: string | null;
+        settings?: PublicOrderSettings;
+      };
+
+      setAcceptingOrders(Boolean(data.ok && data.acceptingOrders));
+      setOrderAvailabilityReason(data.reason ?? null);
+      setOrderSettings(data.settings ?? null);
+
+      if (data.settings) {
+        if (!data.settings.pickupEnabled && data.settings.deliveryEnabled) {
+          setOrderType("delivery");
+        } else if (
+          data.settings.pickupEnabled &&
+          !data.settings.deliveryEnabled
+        ) {
+          setOrderType("pickup");
+        }
+      }
+    } catch {
+      setAcceptingOrders(false);
+      setOrderAvailabilityReason(
+        "Sipariş durumu şu anda kontrol edilemiyor."
+      );
+    }
+  }, []);
+
   const loadMenu = useCallback(async () => {
     const [categoriesResult, itemsResult] =
       await Promise.all([
@@ -477,6 +533,11 @@ export default function MenuPage() {
 
   useEffect(() => {
     void loadMenu();
+    void loadOrderSettings();
+
+    const settingsTimer = window.setInterval(() => {
+      void loadOrderSettings();
+    }, 60_000);
 
     const menuChannel = supabase
       .channel("public-menu-items-live")
@@ -509,10 +570,11 @@ export default function MenuPage() {
       .subscribe();
 
     return () => {
+      window.clearInterval(settingsTimer);
       void supabase.removeChannel(menuChannel);
       void supabase.removeChannel(categoryChannel);
     };
-  }, [loadMenu]);
+  }, [loadMenu, loadOrderSettings]);
 
   const groupedCategories =
     useMemo<GroupedCategory[]>(() => {
@@ -577,6 +639,18 @@ export default function MenuPage() {
   );
 
   function addToCart(item: MenuItem) {
+    if (!acceptingOrders) {
+      setOrderError(
+        orderAvailabilityReason ||
+          (language === "tr"
+            ? "Şu anda online sipariş alamıyoruz."
+            : language === "ru"
+              ? "Сейчас онлайн-заказы недоступны."
+              : "Online ordering is currently unavailable.")
+      );
+      return;
+    }
+
     if (!item.price || item.price <= 0) return;
 
     setCart((current) => {
@@ -606,6 +680,15 @@ export default function MenuPage() {
 
   async function submitWebOrder() {
     setOrderError(null);
+    await loadOrderSettings();
+
+    if (!acceptingOrders) {
+      setOrderError(
+        orderAvailabilityReason ||
+          "Şu anda online sipariş alamıyoruz."
+      );
+      return;
+    }
 
     if (!cart.length) {
       setOrderError(orderTexts[language].empty);
@@ -788,6 +871,47 @@ export default function MenuPage() {
           </p>
         </section>
 
+        <section
+          className={`mb-4 rounded-2xl border px-4 py-3 ${
+            acceptingOrders
+              ? "border-green-800/15 bg-green-50"
+              : "border-[#6e1f12]/15 bg-[#6e1f12]/5"
+          }`}
+        >
+          <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+            <p className={`text-sm font-bold ${acceptingOrders ? "text-green-800" : "text-[#6e1f12]"}`}>
+              {acceptingOrders
+                ? language === "tr"
+                  ? "Online sipariş açık"
+                  : language === "ru"
+                    ? "Онлайн-заказы открыты"
+                    : "Online ordering is open"
+                : orderAvailabilityReason ||
+                  (language === "tr"
+                    ? "Şu anda online sipariş alamıyoruz."
+                    : language === "ru"
+                      ? "Сейчас онлайн-заказы недоступны."
+                      : "Online ordering is currently unavailable.")}
+            </p>
+
+            {orderSettings && acceptingOrders && (
+              <p className="text-xs opacity-60">
+                {language === "tr"
+                  ? `Tahmini hazırlık ${orderSettings.prepTimeMin}–${orderSettings.prepTimeMax} dk`
+                  : language === "ru"
+                    ? `Приготовление ${orderSettings.prepTimeMin}–${orderSettings.prepTimeMax} мин`
+                    : `Estimated prep ${orderSettings.prepTimeMin}–${orderSettings.prepTimeMax} min`}
+              </p>
+            )}
+          </div>
+
+          {orderSettings?.busyMessage && acceptingOrders && (
+            <p className="mt-2 text-xs leading-5 opacity-65">
+              {orderSettings.busyMessage}
+            </p>
+          )}
+        </section>
+
         {groupedCategories.length === 0 ? (
           <div className="rounded-2xl border border-[#6e1f12]/10 bg-white/60 px-6 py-12 text-center">
             <p className="text-sm text-[#292821]/55">
@@ -867,6 +991,8 @@ export default function MenuPage() {
                       openProductId={openProductId}
                       setOpenProductId={setOpenProductId}
                       onAddToCart={addToCart}
+                      orderingAvailable={acceptingOrders}
+                      orderingReason={orderAvailabilityReason}
                     />
                   </section>
                 );
@@ -949,6 +1075,8 @@ export default function MenuPage() {
                       openProductId={openProductId}
                       setOpenProductId={setOpenProductId}
                       onAddToCart={addToCart}
+                      orderingAvailable={acceptingOrders}
+                      orderingReason={orderAvailabilityReason}
                     />
                   </section>
                 );
@@ -957,7 +1085,7 @@ export default function MenuPage() {
           </>
         )}
 
-        {cartCount > 0 && (
+        {cartCount > 0 && acceptingOrders && (
           <button
             type="button"
             onClick={() => setCartOpen(true)}
@@ -1069,8 +1197,13 @@ export default function MenuPage() {
                       <button
                         key={type}
                         type="button"
+                        disabled={
+                          type === "pickup"
+                            ? orderSettings?.pickupEnabled === false
+                            : orderSettings?.deliveryEnabled === false
+                        }
                         onClick={() => setOrderType(type)}
-                        className={`rounded-2xl border px-4 py-3 font-bold ${
+                        className={`rounded-2xl border px-4 py-3 font-bold disabled:cursor-not-allowed disabled:opacity-35 ${
                           orderType === type
                             ? "border-[#6e1f12] bg-[#6e1f12] text-white"
                             : "border-[#6e1f12]/15 bg-white text-[#6e1f12]"
@@ -1082,6 +1215,14 @@ export default function MenuPage() {
                       </button>
                     ))}
                   </div>
+
+                  {orderSettings && (
+                    <p className="text-xs opacity-50">
+                      {orderType === "delivery"
+                        ? `${orderTexts[language].delivery} · minimum ${orderSettings.deliveryMinimum.toLocaleString("tr-TR")} ₺`
+                        : `${orderTexts[language].pickup} · minimum ${orderSettings.pickupMinimum.toLocaleString("tr-TR")} ₺`}
+                    </p>
+                  )}
 
                   <input
                     value={customerName}
@@ -1143,7 +1284,7 @@ export default function MenuPage() {
                   <button
                     type="button"
                     onClick={() => void submitWebOrder()}
-                    disabled={submittingOrder}
+                    disabled={submittingOrder || !acceptingOrders}
                     className="w-full rounded-2xl bg-[#6e1f12] px-5 py-4 font-bold text-white disabled:opacity-50"
                   >
                     {submittingOrder
@@ -1211,12 +1352,16 @@ function CategoryProducts({
   openProductId,
   setOpenProductId,
   onAddToCart,
+  orderingAvailable,
+  orderingReason,
 }: {
   items: MenuItem[];
   language: Language;
   openProductId: number | null;
   setOpenProductId: (id: number | null) => void;
   onAddToCart: (item: MenuItem) => void;
+  orderingAvailable: boolean;
+  orderingReason: string | null;
 }) {
   if (items.length === 0) {
     return (
@@ -1297,10 +1442,18 @@ function CategoryProducts({
               <div className="px-4 pb-4 md:px-6">
                 <button
                   type="button"
+                  disabled={!orderingAvailable}
+                  title={!orderingAvailable ? orderingReason || "" : ""}
                   onClick={() => onAddToCart(item)}
-                  className="w-full rounded-xl border border-[#6e1f12]/15 bg-[#6e1f12]/5 px-4 py-2.5 text-sm font-bold text-[#6e1f12] transition hover:bg-[#6e1f12] hover:text-white md:w-auto"
+                  className="w-full rounded-xl border border-[#6e1f12]/15 bg-[#6e1f12]/5 px-4 py-2.5 text-sm font-bold text-[#6e1f12] transition hover:bg-[#6e1f12] hover:text-white disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-[#6e1f12]/5 disabled:hover:text-[#6e1f12] md:w-auto"
                 >
-                  + {orderTexts[language].add}
+                  {orderingAvailable
+                    ? `+ ${orderTexts[language].add}`
+                    : language === "tr"
+                      ? "Sipariş Kapalı"
+                      : language === "ru"
+                        ? "Заказы закрыты"
+                        : "Ordering Closed"}
                 </button>
               </div>
             )}

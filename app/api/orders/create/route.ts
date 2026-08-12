@@ -25,6 +25,60 @@ function normalizePhone(value: string) {
   return value.replace(/[^0-9+]/g, "").slice(0, 20);
 }
 
+
+type OrderSettings = {
+  ordering_enabled: boolean;
+  pickup_enabled: boolean;
+  delivery_enabled: boolean;
+  auto_schedule_enabled: boolean;
+  open_time: string;
+  close_time: string;
+  pickup_minimum: number | string;
+  delivery_minimum: number | string;
+  closed_message: string;
+};
+
+function turkeyMinutesNow() {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Europe/Istanbul",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(new Date());
+
+  const hour = Number(parts.find((part) => part.type === "hour")?.value ?? 0);
+  const minute = Number(parts.find((part) => part.type === "minute")?.value ?? 0);
+  return hour * 60 + minute;
+}
+
+function timeToMinutes(value: string) {
+  const [hour, minute] = value.slice(0, 5).split(":").map(Number);
+  return hour * 60 + minute;
+}
+
+function insideSchedule(openTime: string, closeTime: string) {
+  const now = turkeyMinutesNow();
+  const open = timeToMinutes(openTime);
+  const close = timeToMinutes(closeTime);
+
+  if (open === close) return true;
+  if (open < close) return now >= open && now < close;
+  return now >= open || now < close;
+}
+
+async function getOrderSettings(): Promise<OrderSettings> {
+  const { data, error } = await supabaseAdmin
+    .from("online_order_settings")
+    .select(
+      "ordering_enabled,pickup_enabled,delivery_enabled,auto_schedule_enabled,open_time,close_time,pickup_minimum,delivery_minimum,closed_message"
+    )
+    .eq("id", 1)
+    .single();
+
+  if (error) throw error;
+  return data as OrderSettings;
+}
+
 function makeOrderCode() {
   const now = new Date();
   const stamp = [
@@ -54,6 +108,50 @@ export async function POST(request: NextRequest) {
     const phone = normalizePhone(cleanText(body.phone, 40));
     const address = cleanText(body.address, 500);
     const note = cleanText(body.note, 500);
+
+    const settings = await getOrderSettings();
+
+    if (!settings.ordering_enabled) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            settings.closed_message ||
+            "Şu anda online sipariş alamıyoruz.",
+        },
+        { status: 409 }
+      );
+    }
+
+    if (
+      settings.auto_schedule_enabled &&
+      !insideSchedule(settings.open_time, settings.close_time)
+    ) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: `Online sipariş saatlerimiz ${settings.open_time.slice(
+            0,
+            5
+          )}–${settings.close_time.slice(0, 5)}.`,
+        },
+        { status: 409 }
+      );
+    }
+
+    if (orderType === "pickup" && !settings.pickup_enabled) {
+      return NextResponse.json(
+        { ok: false, error: "Gel-Al siparişi şu anda kapalı." },
+        { status: 409 }
+      );
+    }
+
+    if (orderType === "delivery" && !settings.delivery_enabled) {
+      return NextResponse.json(
+        { ok: false, error: "Paket servis şu anda kapalı." },
+        { status: 409 }
+      );
+    }
 
     if (customerName.length < 2) {
       return NextResponse.json(
@@ -146,6 +244,22 @@ export async function POST(request: NextRequest) {
     });
 
     const total = lines.reduce((sum, line) => sum + line.line_total, 0);
+
+    const minimum =
+      orderType === "delivery"
+        ? Number(settings.delivery_minimum || 0)
+        : Number(settings.pickup_minimum || 0);
+
+    if (total < minimum) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: `Minimum sipariş tutarı ${minimum.toLocaleString("tr-TR")} ₺.`,
+        },
+        { status: 409 }
+      );
+    }
+
     const orderCode = makeOrderCode();
 
     const { data: order, error: orderError } = await supabaseAdmin
@@ -162,6 +276,7 @@ export async function POST(request: NextRequest) {
         total,
         payment_method: "pending",
         status: "open",
+        pos_stage: "new",
         source: "web",
         external_order_id: orderCode,
       })

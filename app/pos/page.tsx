@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../../lib/supabase";
 import PaymentModal from "../../components/pos/PaymentModal";
 import Receipt from "../../components/pos/Receipt";
@@ -46,6 +46,7 @@ type IncomingOrder = {
   source: string | null;
   external_order_id: string | null;
   external_status: string | null;
+  pos_stage: string | null;
   created_at: string;
 };
 
@@ -54,6 +55,23 @@ type IntegrationAccount = {
   active: boolean;
   credentials_configured: boolean;
   last_sync_at: string | null;
+};
+
+
+type OnlineOrderSettings = {
+  id: number;
+  ordering_enabled: boolean;
+  pickup_enabled: boolean;
+  delivery_enabled: boolean;
+  auto_schedule_enabled: boolean;
+  open_time: string;
+  close_time: string;
+  pickup_minimum: number;
+  delivery_minimum: number;
+  prep_time_min: number;
+  prep_time_max: number;
+  closed_message: string;
+  busy_message: string | null;
 };
 
 function sourceLabel(source: string | null) {
@@ -100,6 +118,12 @@ export default function PosPage() {
   const [syncingTrendyol, setSyncingTrendyol] = useState(false);
   const [trendyolAutoSync, setTrendyolAutoSync] = useState(false);
   const [newOrderNotice, setNewOrderNotice] = useState<IncomingOrder | null>(null);
+  const [onlineSettings, setOnlineSettings] =
+    useState<OnlineOrderSettings | null>(null);
+  const [savingOnlineSettings, setSavingOnlineSettings] = useState(false);
+  const [alertsEnabled, setAlertsEnabled] = useState(false);
+  const knownIncomingIdsRef = useRef<Set<number>>(new Set());
+  const initialIncomingLoadedRef = useRef(false);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [activeCategoryId, setActiveCategoryId] = useState<number | null>(null);
   const [orderType, setOrderType] = useState<OrderType>("Masa");
@@ -139,6 +163,7 @@ export default function PosPage() {
       orderResult,
       incomingResult,
       accountResult,
+      onlineSettingsResult,
     ] = await Promise.all([
       supabase.from("categories").select("id,slug,name_tr,sort_order,active").eq("active", true).order("sort_order"),
       supabase.from("menu_items").select("id,name,name_tr,price,portion,category_id,category,active,sort_order").eq("active", true).not("price", "is", null).order("sort_order"),
@@ -146,7 +171,7 @@ export default function PosPage() {
       supabase.from("pos_orders").select("id,table_id,total").eq("status", "open"),
       supabase
         .from("pos_orders")
-        .select("id,receipt_number,order_type,table_id,customer_name,customer_phone,delivery_address,order_note,subtotal,discount_amount,total,payment_method,status,source,external_order_id,external_status,created_at")
+        .select("id,receipt_number,order_type,table_id,customer_name,customer_phone,delivery_address,order_note,subtotal,discount_amount,total,payment_method,status,source,external_order_id,external_status,pos_stage,created_at")
         .eq("status", "open")
         .in("source", ["web", "trendyol", "yemeksepeti"])
         .order("created_at", { ascending: false }),
@@ -154,6 +179,13 @@ export default function PosPage() {
         .from("integration_accounts")
         .select("channel,active,credentials_configured,last_sync_at")
         .eq("environment", "production"),
+      supabase
+        .from("online_order_settings")
+        .select(
+          "id,ordering_enabled,pickup_enabled,delivery_enabled,auto_schedule_enabled,open_time,close_time,pickup_minimum,delivery_minimum,prep_time_min,prep_time_max,closed_message,busy_message"
+        )
+        .eq("id", 1)
+        .single(),
     ]);
     const error =
       categoryResult.error ||
@@ -161,7 +193,8 @@ export default function PosPage() {
       tableResult.error ||
       orderResult.error ||
       incomingResult.error ||
-      accountResult.error;
+      accountResult.error ||
+      onlineSettingsResult.error;
     if (error) {
       alert(`POS verileri yüklenemedi: ${error.message}`);
       setLoading(false);
@@ -174,12 +207,73 @@ export default function PosPage() {
     setOpenOrders((orderResult.data ?? []) as OpenOrder[]);
     setIncomingOrders((incomingResult.data ?? []) as IncomingOrder[]);
     setIntegrationAccounts((accountResult.data ?? []) as IntegrationAccount[]);
+    setOnlineSettings(onlineSettingsResult.data as OnlineOrderSettings);
     if (loadedCategories.length > 0) setActiveCategoryId((current) => current ?? loadedCategories[0].id);
     setLoading(false);
   }, []);
 
+  const loadIncomingOrdersOnly = useCallback(async () => {
+    const { data, error } = await supabase
+      .from("pos_orders")
+      .select(
+        "id,receipt_number,order_type,table_id,customer_name,customer_phone,delivery_address,order_note,subtotal,discount_amount,total,payment_method,status,source,external_order_id,external_status,pos_stage,created_at"
+      )
+      .eq("status", "open")
+      .in("source", ["web", "trendyol", "yemeksepeti"])
+      .order("created_at", { ascending: false });
+
+    if (error) return;
+
+    const rows = (data ?? []) as IncomingOrder[];
+
+    if (!initialIncomingLoadedRef.current) {
+      knownIncomingIdsRef.current = new Set(rows.map((row) => row.id));
+      initialIncomingLoadedRef.current = true;
+      setIncomingOrders(rows);
+      return;
+    }
+
+    const fresh = rows.filter(
+      (row) => !knownIncomingIdsRef.current.has(row.id)
+    );
+
+    knownIncomingIdsRef.current = new Set(rows.map((row) => row.id));
+    setIncomingOrders(rows);
+
+    if (fresh.length > 0) {
+      const newest = fresh[0];
+      setNewOrderNotice(newest);
+      ringNewOrder();
+
+      if (
+        typeof Notification !== "undefined" &&
+        Notification.permission === "granted"
+      ) {
+        new Notification(`Yeni ${sourceLabel(newest.source)}`, {
+          body: `${newest.customer_name || "Müşteri"} · ${money(
+            Number(newest.total || 0)
+          )} ₺`,
+        });
+      }
+    }
+  }, [alertsEnabled]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") {
+        void loadIncomingOrdersOnly();
+      }
+    }, 8000);
+
+    return () => window.clearInterval(timer);
+  }, [loadIncomingOrdersOnly]);
+
   useEffect(() => {
     void loadData();
+
+    if (typeof window !== "undefined") {
+      setAlertsEnabled(localStorage.getItem("lemans-pos-alerts") === "1");
+    }
   }, [loadData]);
 
   useEffect(() => {
@@ -197,7 +291,21 @@ export default function PosPage() {
             row.status === "open" &&
             ["web", "trendyol", "yemeksepeti"].includes(String(row.source))
           ) {
-            setNewOrderNotice(row as IncomingOrder);
+            const incoming = row as IncomingOrder;
+            knownIncomingIdsRef.current.add(incoming.id);
+            setNewOrderNotice(incoming);
+            ringNewOrder();
+
+            if (
+              typeof Notification !== "undefined" &&
+              Notification.permission === "granted"
+            ) {
+              new Notification(`Yeni ${sourceLabel(incoming.source)}`, {
+                body: `${incoming.customer_name || "Müşteri"} · ${money(
+                  Number(incoming.total || 0)
+                )} ₺`,
+              });
+            }
           }
 
           void loadData();
@@ -219,6 +327,109 @@ export default function PosPage() {
 
     return () => window.clearInterval(timer);
   }, [trendyolAutoSync]);
+
+  useEffect(() => {
+    if (!newOrderNotice || !alertsEnabled) return;
+
+    ringNewOrder();
+
+    const timer = window.setInterval(() => {
+      ringNewOrder();
+    }, 15_000);
+
+    return () => window.clearInterval(timer);
+  }, [newOrderNotice, alertsEnabled]);
+
+  function ringNewOrder(force = false) {
+    if ((!alertsEnabled && !force) || typeof window === "undefined") return;
+
+    try {
+      const AudioContextClass =
+        window.AudioContext ||
+        (window as typeof window & {
+          webkitAudioContext?: typeof AudioContext;
+        }).webkitAudioContext;
+
+      if (!AudioContextClass) return;
+
+      const context = new AudioContextClass();
+      const now = context.currentTime;
+
+      [0, 0.22, 0.44].forEach((offset) => {
+        const oscillator = context.createOscillator();
+        const gain = context.createGain();
+
+        oscillator.type = "sine";
+        oscillator.frequency.setValueAtTime(880, now + offset);
+        gain.gain.setValueAtTime(0.0001, now + offset);
+        gain.gain.exponentialRampToValueAtTime(0.25, now + offset + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + offset + 0.16);
+
+        oscillator.connect(gain);
+        gain.connect(context.destination);
+
+        oscillator.start(now + offset);
+        oscillator.stop(now + offset + 0.18);
+      });
+
+      window.setTimeout(() => {
+        void context.close();
+      }, 1200);
+    } catch {
+      // Tarayıcı otomatik sesi engellerse POS çalışmaya devam eder.
+    }
+  }
+
+  async function enableAlerts() {
+    setAlertsEnabled(true);
+    localStorage.setItem("lemans-pos-alerts", "1");
+    ringNewOrder(true);
+
+    if (
+      typeof Notification !== "undefined" &&
+      Notification.permission === "default"
+    ) {
+      await Notification.requestPermission();
+    }
+
+    setChannelMessage("Yeni sipariş alarmı ve tarayıcı bildirimi etkinleştirildi.");
+  }
+
+  async function saveOnlineSettings(
+    patch: Partial<OnlineOrderSettings>
+  ) {
+    if (!onlineSettings) return;
+
+    const next = { ...onlineSettings, ...patch };
+    setOnlineSettings(next);
+    setSavingOnlineSettings(true);
+
+    const { error } = await supabase
+      .from("online_order_settings")
+      .update({
+        ordering_enabled: next.ordering_enabled,
+        pickup_enabled: next.pickup_enabled,
+        delivery_enabled: next.delivery_enabled,
+        auto_schedule_enabled: next.auto_schedule_enabled,
+        open_time: next.open_time,
+        close_time: next.close_time,
+        pickup_minimum: Number(next.pickup_minimum || 0),
+        delivery_minimum: Number(next.delivery_minimum || 0),
+        prep_time_min: Number(next.prep_time_min || 0),
+        prep_time_max: Number(next.prep_time_max || 0),
+        closed_message: next.closed_message,
+        busy_message: next.busy_message || null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", 1);
+
+    setSavingOnlineSettings(false);
+
+    if (error) {
+      alert(error.message);
+      await loadData();
+    }
+  }
 
   async function syncTrendyol(showMessage = true) {
     if (syncingTrendyol) return;
@@ -260,6 +471,16 @@ export default function PosPage() {
   }
 
   async function openIncomingOrder(order: IncomingOrder) {
+    const { error: stageError } = await supabase
+      .from("pos_orders")
+      .update({ pos_stage: "accepted" })
+      .eq("id", order.id);
+
+    if (stageError) {
+      alert(stageError.message);
+      return;
+    }
+
     const { data, error } = await supabase
       .from("pos_order_items")
       .select("id,menu_item_id,product_name,quantity,portion_type,portion_label,weight_grams,unit_price")
@@ -321,7 +542,7 @@ export default function PosPage() {
       .update({
         status: "closed",
         closed_at: now,
-        external_status: "accepted",
+        pos_stage: "accepted",
         card_amount: Number(order.total || 0),
         cash_amount: 0,
         meal_card_amount: 0,
@@ -357,7 +578,7 @@ export default function PosPage() {
   ) {
     const { error } = await supabase
       .from("pos_orders")
-      .update({ external_status: stage })
+      .update({ pos_stage: stage })
       .eq("id", orderIdValue);
 
     if (error) {
@@ -649,6 +870,227 @@ await loadData();
             </div>
           </header>
 
+          {onlineSettings && (
+            <section className="mb-5 rounded-3xl border-2 border-[#6e1f12]/15 bg-white p-4">
+              <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                <div>
+                  <h2
+                    className="text-xl font-bold text-[#6e1f12]"
+                    style={{ fontFamily: BRAND_FONT }}
+                  >
+                    Online Sipariş Kontrolü
+                  </h2>
+                  <p className="mt-1 text-xs opacity-50">
+                    lemansdeli.com menüsünden gelen siparişleri buradan açıp kapat.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  disabled={savingOnlineSettings}
+                  onClick={() =>
+                    void saveOnlineSettings({
+                      ordering_enabled: !onlineSettings.ordering_enabled,
+                    })
+                  }
+                  className={`rounded-2xl px-5 py-3 text-sm font-bold text-white ${
+                    onlineSettings.ordering_enabled
+                      ? "bg-green-700"
+                      : "bg-red-700"
+                  }`}
+                >
+                  {onlineSettings.ordering_enabled
+                    ? "🟢 ONLINE SİPARİŞ AÇIK"
+                    : "🔴 ONLINE SİPARİŞ KAPALI"}
+                </button>
+              </div>
+
+              <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                <button
+                  type="button"
+                  onClick={() =>
+                    void saveOnlineSettings({
+                      pickup_enabled: !onlineSettings.pickup_enabled,
+                    })
+                  }
+                  className={`rounded-xl border px-4 py-3 text-sm font-bold ${
+                    onlineSettings.pickup_enabled
+                      ? "border-green-200 bg-green-50 text-green-800"
+                      : "border-red-200 bg-red-50 text-red-800"
+                  }`}
+                >
+                  Gel-Al: {onlineSettings.pickup_enabled ? "Açık" : "Kapalı"}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    void saveOnlineSettings({
+                      delivery_enabled: !onlineSettings.delivery_enabled,
+                    })
+                  }
+                  className={`rounded-xl border px-4 py-3 text-sm font-bold ${
+                    onlineSettings.delivery_enabled
+                      ? "border-green-200 bg-green-50 text-green-800"
+                      : "border-red-200 bg-red-50 text-red-800"
+                  }`}
+                >
+                  Paket Servis: {onlineSettings.delivery_enabled ? "Açık" : "Kapalı"}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    void saveOnlineSettings({
+                      auto_schedule_enabled:
+                        !onlineSettings.auto_schedule_enabled,
+                    })
+                  }
+                  className={`rounded-xl border px-4 py-3 text-sm font-bold ${
+                    onlineSettings.auto_schedule_enabled
+                      ? "border-blue-200 bg-blue-50 text-blue-800"
+                      : "border-black/10 bg-white"
+                  }`}
+                >
+                  Saat Kuralı:{" "}
+                  {onlineSettings.auto_schedule_enabled ? "Açık" : "Kapalı"}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => void enableAlerts()}
+                  className={`rounded-xl border px-4 py-3 text-sm font-bold ${
+                    alertsEnabled
+                      ? "border-amber-200 bg-amber-50 text-amber-800"
+                      : "border-black/10 bg-white"
+                  }`}
+                >
+                  🔔 Alarm & Bildirim: {alertsEnabled ? "Açık" : "Etkinleştir"}
+                </button>
+              </div>
+
+              <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                <label className="text-xs font-semibold">
+                  Açılış
+                  <input
+                    type="time"
+                    value={onlineSettings.open_time.slice(0, 5)}
+                    onChange={(event) =>
+                      setOnlineSettings({
+                        ...onlineSettings,
+                        open_time: event.target.value,
+                      })
+                    }
+                    onBlur={() => void saveOnlineSettings({})}
+                    className="mt-1 w-full rounded-xl border px-3 py-2.5 text-sm"
+                  />
+                </label>
+
+                <label className="text-xs font-semibold">
+                  Kapanış
+                  <input
+                    type="time"
+                    value={onlineSettings.close_time.slice(0, 5)}
+                    onChange={(event) =>
+                      setOnlineSettings({
+                        ...onlineSettings,
+                        close_time: event.target.value,
+                      })
+                    }
+                    onBlur={() => void saveOnlineSettings({})}
+                    className="mt-1 w-full rounded-xl border px-3 py-2.5 text-sm"
+                  />
+                </label>
+
+                <label className="text-xs font-semibold">
+                  Gel-Al minimum ₺
+                  <input
+                    type="number"
+                    min="0"
+                    value={onlineSettings.pickup_minimum}
+                    onChange={(event) =>
+                      setOnlineSettings({
+                        ...onlineSettings,
+                        pickup_minimum: Number(event.target.value || 0),
+                      })
+                    }
+                    onBlur={() => void saveOnlineSettings({})}
+                    className="mt-1 w-full rounded-xl border px-3 py-2.5 text-sm"
+                  />
+                </label>
+
+                <label className="text-xs font-semibold">
+                  Paket minimum ₺
+                  <input
+                    type="number"
+                    min="0"
+                    value={onlineSettings.delivery_minimum}
+                    onChange={(event) =>
+                      setOnlineSettings({
+                        ...onlineSettings,
+                        delivery_minimum: Number(event.target.value || 0),
+                      })
+                    }
+                    onBlur={() => void saveOnlineSettings({})}
+                    className="mt-1 w-full rounded-xl border px-3 py-2.5 text-sm"
+                  />
+                </label>
+              </div>
+
+              <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                <label className="text-xs font-semibold">
+                  Hazırlık min. dk
+                  <input
+                    type="number"
+                    min="0"
+                    value={onlineSettings.prep_time_min}
+                    onChange={(event) =>
+                      setOnlineSettings({
+                        ...onlineSettings,
+                        prep_time_min: Number(event.target.value || 0),
+                      })
+                    }
+                    onBlur={() => void saveOnlineSettings({})}
+                    className="mt-1 w-full rounded-xl border px-3 py-2.5 text-sm"
+                  />
+                </label>
+
+                <label className="text-xs font-semibold">
+                  Hazırlık max. dk
+                  <input
+                    type="number"
+                    min={onlineSettings.prep_time_min}
+                    value={onlineSettings.prep_time_max}
+                    onChange={(event) =>
+                      setOnlineSettings({
+                        ...onlineSettings,
+                        prep_time_max: Number(event.target.value || 0),
+                      })
+                    }
+                    onBlur={() => void saveOnlineSettings({})}
+                    className="mt-1 w-full rounded-xl border px-3 py-2.5 text-sm"
+                  />
+                </label>
+
+                <label className="text-xs font-semibold md:col-span-2">
+                  Yoğunluk mesajı
+                  <input
+                    value={onlineSettings.busy_message || ""}
+                    onChange={(event) =>
+                      setOnlineSettings({
+                        ...onlineSettings,
+                        busy_message: event.target.value,
+                      })
+                    }
+                    onBlur={() => void saveOnlineSettings({})}
+                    placeholder="Örn. Yoğunluk nedeniyle hazırlık süresi uzayabilir."
+                    className="mt-1 w-full rounded-xl border px-3 py-2.5 text-sm"
+                  />
+                </label>
+              </div>
+            </section>
+          )}
+
           <section className="mb-5 rounded-3xl border border-[#6e1f12]/10 bg-white p-4">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
               <div>
@@ -740,7 +1182,7 @@ await loadData();
                   const call = phoneHref(order.customer_phone);
                   const whatsapp = whatsappHref(order.customer_phone);
                   const maps = mapsHref(order.delivery_address);
-                  const stage = order.external_status || "new";
+                  const stage = order.pos_stage || "new";
 
                   return (
                     <article
@@ -823,9 +1265,7 @@ await loadData();
                           onClick={() => void acceptIncomingOrder(order)}
                           className="rounded-xl bg-[#6e1f12] px-3 py-2 text-xs font-bold text-white"
                         >
-                          {order.source === "trendyol" && order.payment_method !== "pending"
-                            ? "✓ Kabul Et"
-                            : "Siparişi Aç"}
+                          ✓ Kabul Et
                         </button>
                       </div>
 
@@ -980,10 +1420,10 @@ await loadData();
               </div>
               <button
                 type="button"
-                onClick={() => setNewOrderNotice(null)}
-                className="rounded-full border px-3 py-2 text-sm"
+                onClick={() => void acceptIncomingOrder(newOrderNotice)}
+                className="rounded-xl bg-[#6e1f12] px-4 py-2 text-sm font-bold text-white"
               >
-                ✕
+                ✓ Kabul Et
               </button>
             </div>
           </div>
