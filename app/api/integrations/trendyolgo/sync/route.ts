@@ -250,7 +250,6 @@ export async function POST() {
             String(line.productId),
             line.name
           );
-          continue;
         }
 
         const activeItemCount =
@@ -267,19 +266,31 @@ export async function POST() {
         });
       }
 
-      if (hasUnmatched || rows.length === 0) {
+      if (rows.length === 0) {
         await supabaseAdmin.from("integration_events").insert({
           channel: "trendyol",
-          event_type: "order.mapping_required",
+          event_type: "order.empty",
           external_order_id: externalOrderId,
           direction: "inbound",
           status: "failed",
           payload: pkg,
-          error_message:
-            "Siparişte eşleştirilmemiş Trendyol Go ürünü var.",
+          error_message: "Siparişte aktarılabilecek ürün satırı yok.",
         });
-
         continue;
+      }
+
+      if (hasUnmatched) {
+        await supabaseAdmin.from("integration_events").insert({
+          channel: "trendyol",
+          event_type: "order.mapping_warning",
+          external_order_id: externalOrderId,
+          direction: "inbound",
+          status: "processed",
+          payload: pkg,
+          error_message:
+            "Bazı Trendyol Go ürünleri eşleştirilmemiş; sipariş yine POS'a aktarıldı.",
+          processed_at: new Date().toISOString(),
+        });
       }
 
       const subtotal = rows.reduce(
@@ -293,8 +304,9 @@ export async function POST() {
         0
       );
 
-      const orderStatus =
-        pkg.packageStatus === "Delivered" ? "closed" : "open";
+      // Trendyol durumu external_status'ta tutulur.
+      // POS adisyonu yalnızca POS içinden kapatılır.
+      const orderStatus = "open";
 
       const invoice = extractInvoiceData(pkg);
 
@@ -329,10 +341,7 @@ export async function POST() {
             invoice_type: null,
             invoice_status: "none",
             invoice_requested: false,
-            closed_at:
-              orderStatus === "closed"
-                ? new Date().toISOString()
-                : null,
+            closed_at: null,
           })
           .select("id")
           .single();

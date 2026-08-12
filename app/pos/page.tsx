@@ -28,11 +28,78 @@ import {
   receiptNo,
 } from "../../components/pos/utils";
 
+
+type IncomingOrder = {
+  id: number;
+  receipt_number: string | null;
+  order_type: string | null;
+  table_id: number | null;
+  customer_name: string | null;
+  customer_phone: string | null;
+  delivery_address: string | null;
+  order_note: string | null;
+  subtotal: number | null;
+  discount_amount: number | null;
+  total: number | null;
+  payment_method: string | null;
+  status: string;
+  source: string | null;
+  external_order_id: string | null;
+  external_status: string | null;
+  created_at: string;
+};
+
+type IntegrationAccount = {
+  channel: "trendyol" | "yemeksepeti";
+  active: boolean;
+  credentials_configured: boolean;
+  last_sync_at: string | null;
+};
+
+function sourceLabel(source: string | null) {
+  if (source === "web") return "WEB SİPARİŞİ";
+  if (source === "trendyol") return "TRENDYOL GO";
+  if (source === "yemeksepeti") return "YEMEKSEPETİ";
+  return "SİPARİŞ";
+}
+
+function sourceBadgeClass(source: string | null) {
+  if (source === "web") return "bg-emerald-100 text-emerald-800";
+  if (source === "trendyol") return "bg-orange-100 text-orange-800";
+  if (source === "yemeksepeti") return "bg-pink-100 text-pink-800";
+  return "bg-slate-100 text-slate-700";
+}
+
+function phoneHref(phone: string | null) {
+  if (!phone) return null;
+  const clean = phone.replace(/[^0-9+]/g, "");
+  return clean ? `tel:${clean}` : null;
+}
+
+function whatsappHref(phone: string | null) {
+  if (!phone) return null;
+  let digits = phone.replace(/\D/g, "");
+  if (digits.startsWith("0")) digits = `90${digits.slice(1)}`;
+  if (digits.length === 10) digits = `90${digits}`;
+  return digits ? `https://wa.me/${digits}` : null;
+}
+
+function mapsHref(address: string | null) {
+  if (!address) return null;
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
+}
+
 export default function PosPage() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [items, setItems] = useState<MenuItem[]>([]);
   const [tables, setTables] = useState<PosTable[]>([]);
   const [openOrders, setOpenOrders] = useState<OpenOrder[]>([]);
+  const [incomingOrders, setIncomingOrders] = useState<IncomingOrder[]>([]);
+  const [integrationAccounts, setIntegrationAccounts] = useState<IntegrationAccount[]>([]);
+  const [channelMessage, setChannelMessage] = useState("");
+  const [syncingTrendyol, setSyncingTrendyol] = useState(false);
+  const [trendyolAutoSync, setTrendyolAutoSync] = useState(false);
+  const [newOrderNotice, setNewOrderNotice] = useState<IncomingOrder | null>(null);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [activeCategoryId, setActiveCategoryId] = useState<number | null>(null);
   const [orderType, setOrderType] = useState<OrderType>("Masa");
@@ -65,13 +132,36 @@ export default function PosPage() {
 
   const loadData = useCallback(async () => {
     setLoading(true);
-    const [categoryResult, itemResult, tableResult, orderResult] = await Promise.all([
+    const [
+      categoryResult,
+      itemResult,
+      tableResult,
+      orderResult,
+      incomingResult,
+      accountResult,
+    ] = await Promise.all([
       supabase.from("categories").select("id,slug,name_tr,sort_order,active").eq("active", true).order("sort_order"),
       supabase.from("menu_items").select("id,name,name_tr,price,portion,category_id,category,active,sort_order").eq("active", true).not("price", "is", null).order("sort_order"),
       supabase.from("pos_tables").select("id,name,sort_order,active").eq("active", true).order("sort_order"),
       supabase.from("pos_orders").select("id,table_id,total").eq("status", "open"),
+      supabase
+        .from("pos_orders")
+        .select("id,receipt_number,order_type,table_id,customer_name,customer_phone,delivery_address,order_note,subtotal,discount_amount,total,payment_method,status,source,external_order_id,external_status,created_at")
+        .eq("status", "open")
+        .in("source", ["web", "trendyol", "yemeksepeti"])
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("integration_accounts")
+        .select("channel,active,credentials_configured,last_sync_at")
+        .eq("environment", "production"),
     ]);
-    const error = categoryResult.error || itemResult.error || tableResult.error || orderResult.error;
+    const error =
+      categoryResult.error ||
+      itemResult.error ||
+      tableResult.error ||
+      orderResult.error ||
+      incomingResult.error ||
+      accountResult.error;
     if (error) {
       alert(`POS verileri yüklenemedi: ${error.message}`);
       setLoading(false);
@@ -82,11 +172,154 @@ export default function PosPage() {
     setItems((itemResult.data ?? []) as MenuItem[]);
     setTables((tableResult.data ?? []) as PosTable[]);
     setOpenOrders((orderResult.data ?? []) as OpenOrder[]);
+    setIncomingOrders((incomingResult.data ?? []) as IncomingOrder[]);
+    setIntegrationAccounts((accountResult.data ?? []) as IntegrationAccount[]);
     if (loadedCategories.length > 0) setActiveCategoryId((current) => current ?? loadedCategories[0].id);
     setLoading(false);
   }, []);
 
-  useEffect(() => { void loadData(); }, [loadData]);
+  useEffect(() => {
+    void loadData();
+  }, [loadData]);
+
+  useEffect(() => {
+    const channel = supabase
+      .channel("pos-live-orders")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "pos_orders" },
+        (payload) => {
+          const row = payload.new as Partial<IncomingOrder> | null;
+
+          if (
+            payload.eventType === "INSERT" &&
+            row &&
+            row.status === "open" &&
+            ["web", "trendyol", "yemeksepeti"].includes(String(row.source))
+          ) {
+            setNewOrderNotice(row as IncomingOrder);
+          }
+
+          void loadData();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [loadData]);
+
+  useEffect(() => {
+    if (!trendyolAutoSync) return;
+
+    const timer = window.setInterval(() => {
+      void syncTrendyol(false);
+    }, 60_000);
+
+    return () => window.clearInterval(timer);
+  }, [trendyolAutoSync]);
+
+  async function syncTrendyol(showMessage = true) {
+    if (syncingTrendyol) return;
+
+    setSyncingTrendyol(true);
+    if (showMessage) setChannelMessage("Trendyol Go siparişleri sorgulanıyor...");
+
+    try {
+      const response = await fetch("/api/integrations/trendyolgo/sync", {
+        method: "POST",
+      });
+      const data = (await response.json()) as {
+        ok?: boolean;
+        fetched?: number;
+        imported?: number;
+        skipped?: number;
+        unmatched?: number;
+        error?: string;
+      };
+
+      if (!response.ok || !data.ok) {
+        throw new Error(data.error || "Trendyol Go sorgusu başarısız.");
+      }
+
+      if (showMessage || Number(data.imported || 0) > 0) {
+        setChannelMessage(
+          `Trendyol: ${data.imported ?? 0} yeni sipariş · ${data.unmatched ?? 0} eşleşmeyen ürün`
+        );
+      }
+
+      await loadData();
+    } catch (error) {
+      setChannelMessage(
+        error instanceof Error ? error.message : "Trendyol Go sorgulanamadı."
+      );
+    } finally {
+      setSyncingTrendyol(false);
+    }
+  }
+
+  async function openIncomingOrder(order: IncomingOrder) {
+    const { data, error } = await supabase
+      .from("pos_order_items")
+      .select("id,menu_item_id,product_name,quantity,portion_type,portion_label,weight_grams,unit_price")
+      .eq("order_id", order.id)
+      .order("id");
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    const restored = (data ?? []).map((row): CartItem => {
+      const source = items.find((item) => item.id === row.menu_item_id);
+      return {
+        id: source?.id ?? row.menu_item_id ?? -1,
+        name: source?.name ?? row.product_name,
+        name_tr: source?.name_tr ?? row.product_name,
+        price: source?.price ?? Number(row.unit_price),
+        portion: source?.portion ?? null,
+        category_id: source?.category_id ?? null,
+        category: source?.category ?? null,
+        active: true,
+        sort_order: source?.sort_order ?? 0,
+        lineId: `saved-${row.id}`,
+        quantity: Number(row.quantity),
+        portionType: (row.portion_type as PortionType) ?? "unit",
+        unitPrice: Number(row.unit_price),
+        displayPortion: row.portion_label,
+        weightGrams: row.weight_grams,
+      };
+    });
+
+    setOrderType(order.order_type === "Gel-Al" ? "Gel-Al" : "Paket");
+    setTableId(null);
+    setOrderId(order.id);
+    setCustomerName(order.customer_name || "");
+    setOrderNote(order.order_note || "");
+    setDiscountType("none");
+    setDiscountValue("");
+    setCart(restored);
+    setNewOrderNotice(null);
+    window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
+  }
+
+  async function setIncomingStage(
+    orderIdValue: number,
+    stage: "new" | "preparing" | "ready"
+  ) {
+    const { error } = await supabase
+      .from("pos_orders")
+      .update({ external_status: stage })
+      .eq("id", orderIdValue);
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    await loadData();
+  }
 
   const visibleItems = useMemo(() => {
     const category = categories.find((item) => item.id === activeCategoryId);
@@ -370,6 +603,207 @@ await loadData();
           </header>
 
           <section className="mb-5 rounded-3xl border border-[#6e1f12]/10 bg-white p-4">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <h2
+                  className="text-xl font-bold text-[#6e1f12]"
+                  style={{ fontFamily: BRAND_FONT }}
+                >
+                  Sipariş Kanalları
+                </h2>
+                <p className="mt-1 text-xs opacity-50">
+                  Web siparişleri anlık gelir. Trendyol Go burada sorgulanabilir; istersen 60 sn otomatik sorgu açabilirsin.
+                </p>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => void syncTrendyol(true)}
+                  disabled={syncingTrendyol}
+                  className="rounded-xl border border-orange-200 bg-orange-50 px-4 py-2 text-sm font-bold text-orange-800 disabled:opacity-50"
+                >
+                  {syncingTrendyol ? "Trendyol Sorgulanıyor..." : "🟠 Trendyol'u Çek"}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setTrendyolAutoSync((value) => !value)}
+                  className={`rounded-xl border px-4 py-2 text-sm font-bold ${
+                    trendyolAutoSync
+                      ? "border-green-200 bg-green-50 text-green-800"
+                      : "border-black/10 bg-white text-[#292821]"
+                  }`}
+                >
+                  {trendyolAutoSync ? "✓ Trendyol Otomatik: Açık" : "Trendyol Otomatik: Kapalı"}
+                </button>
+
+                <button
+                  type="button"
+                  disabled
+                  title="Yemeksepeti Partner API erişimi henüz bağlı değil."
+                  className="rounded-xl border border-pink-200 bg-pink-50 px-4 py-2 text-sm font-bold text-pink-800 opacity-55"
+                >
+                  🩷 Yemeksepeti · API Bekleniyor
+                </button>
+              </div>
+            </div>
+
+            <div className="mt-3 flex flex-wrap gap-2 text-xs">
+              {integrationAccounts.map((account) => (
+                <span
+                  key={account.channel}
+                  className="rounded-full bg-[#f4efe5] px-3 py-1.5"
+                >
+                  {account.channel === "trendyol" ? "Trendyol" : "Yemeksepeti"}:{" "}
+                  {account.active ? "aktif" : "pasif"} ·{" "}
+                  {account.credentials_configured ? "bilgiler hazır" : "bilgiler eksik"}
+                </span>
+              ))}
+            </div>
+
+            {channelMessage && (
+              <p className="mt-3 rounded-xl bg-[#f4efe5] px-4 py-3 text-sm">
+                {channelMessage}
+              </p>
+            )}
+          </section>
+
+          {incomingOrders.length > 0 && (
+            <section className="mb-5 rounded-3xl border-2 border-[#6e1f12]/20 bg-white p-4">
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <div>
+                  <h2
+                    className="text-xl font-bold text-[#6e1f12]"
+                    style={{ fontFamily: BRAND_FONT }}
+                  >
+                    Yeni Siparişler
+                  </h2>
+                  <p className="mt-1 text-xs opacity-50">
+                    Web, Trendyol Go ve ileride Yemeksepeti siparişleri burada toplanır.
+                  </p>
+                </div>
+                <span className="rounded-full bg-[#6e1f12] px-3 py-1.5 text-xs font-bold text-white">
+                  {incomingOrders.length}
+                </span>
+              </div>
+
+              <div className="grid gap-3 lg:grid-cols-2">
+                {incomingOrders.map((order) => {
+                  const call = phoneHref(order.customer_phone);
+                  const whatsapp = whatsappHref(order.customer_phone);
+                  const maps = mapsHref(order.delivery_address);
+                  const stage = order.external_status || "new";
+
+                  return (
+                    <article
+                      key={order.id}
+                      className="rounded-2xl border border-black/10 bg-[#fffdf8] p-4 shadow-sm"
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <span className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-bold ${sourceBadgeClass(order.source)}`}>
+                            {stage === "new" ? "YENİ · " : ""}
+                            {sourceLabel(order.source)}
+                          </span>
+                          <p className="mt-2 text-lg font-bold text-[#6e1f12]">
+                            {order.customer_name || "İsimsiz müşteri"}
+                          </p>
+                          <p className="mt-1 text-xs opacity-55">
+                            {order.receipt_number || `Sipariş #${order.id}`} ·{" "}
+                            {order.order_type || "Paket"}
+                          </p>
+                        </div>
+                        <p className="text-xl font-bold text-[#6e1f12]">
+                          {money(Number(order.total || 0))} ₺
+                        </p>
+                      </div>
+
+                      {order.customer_phone && (
+                        <p className="mt-3 text-sm font-semibold">
+                          📱 {order.customer_phone}
+                        </p>
+                      )}
+                      {order.delivery_address && (
+                        <p className="mt-2 text-sm leading-5">
+                          📍 {order.delivery_address}
+                        </p>
+                      )}
+                      {order.order_note && (
+                        <p className="mt-2 rounded-xl bg-amber-50 px-3 py-2 text-sm">
+                          <strong>Not:</strong> {order.order_note}
+                        </p>
+                      )}
+
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        {call && (
+                          <a
+                            href={call}
+                            className="rounded-xl border bg-white px-3 py-2 text-xs font-bold"
+                          >
+                            📞 Ara
+                          </a>
+                        )}
+                        {whatsapp && (
+                          <a
+                            href={whatsapp}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-xs font-bold text-green-800"
+                          >
+                            WhatsApp
+                          </a>
+                        )}
+                        {maps && (
+                          <a
+                            href={maps}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-bold text-blue-800"
+                          >
+                            📍 Haritada Aç
+                          </a>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => void openIncomingOrder(order)}
+                          className="rounded-xl bg-[#6e1f12] px-3 py-2 text-xs font-bold text-white"
+                        >
+                          Siparişi Aç
+                        </button>
+                      </div>
+
+                      <div className="mt-3 grid grid-cols-3 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => void setIncomingStage(order.id, "new")}
+                          className={`rounded-lg border px-2 py-2 text-[11px] font-bold ${stage === "new" ? "bg-slate-800 text-white" : "bg-white"}`}
+                        >
+                          Yeni
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void setIncomingStage(order.id, "preparing")}
+                          className={`rounded-lg border px-2 py-2 text-[11px] font-bold ${stage === "preparing" ? "bg-amber-500 text-white" : "bg-white"}`}
+                        >
+                          Hazırlanıyor
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void setIncomingStage(order.id, "ready")}
+                          className={`rounded-lg border px-2 py-2 text-[11px] font-bold ${stage === "ready" ? "bg-green-600 text-white" : "bg-white"}`}
+                        >
+                          Hazır
+                        </button>
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+            </section>
+          )}
+
+          <section className="mb-5 rounded-3xl border border-[#6e1f12]/10 bg-white p-4">
             <h2 className="mb-3 text-xl font-bold text-[#6e1f12]" style={{ fontFamily: BRAND_FONT }}>Masalar</h2>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-8">
               {tables.map((table) => {
@@ -473,6 +907,31 @@ await loadData();
             </aside>
           </div>
         </div>
+
+        {newOrderNotice && (
+          <div className="fixed inset-x-4 top-4 z-[120] mx-auto max-w-xl rounded-2xl border-2 border-[#6e1f12] bg-white p-4 shadow-2xl no-print">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <span className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-bold ${sourceBadgeClass(newOrderNotice.source)}`}>
+                  YENİ · {sourceLabel(newOrderNotice.source)}
+                </span>
+                <p className="mt-2 text-lg font-bold text-[#6e1f12]">
+                  {newOrderNotice.customer_name || "Yeni müşteri"}
+                </p>
+                <p className="mt-1 text-sm">
+                  {money(Number(newOrderNotice.total || 0))} ₺
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setNewOrderNotice(null)}
+                className="rounded-full border px-3 py-2 text-sm"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+        )}
 
         {weightItem && <WeightModal item={weightItem} grams={weightInput} calculatedPrice={calculatedWeightPrice} onGramsChange={setWeightInput} onCancel={() => { setWeightItem(null); setWeightInput(""); }} onAdd={addWeight} />}
         {paymentOpen && <PaymentModal subtotal={subtotal} discountAmount={discountAmount} discountLabel={discountLabel} total={total} payment={payment} cash={cash} card={card} mealCard={mealCard} internalReason={internalReason} printAfterClose={printAfterClose} saving={saving} onPaymentChange={setPayment} onCashChange={setCash} onCardChange={setCard} onMealCardChange={setMealCard} onInternalReasonChange={setInternalReason} onPrintAfterCloseChange={setPrintAfterClose} onCancel={() => setPaymentOpen(false)} onClose={() => void closeOrder()} />}

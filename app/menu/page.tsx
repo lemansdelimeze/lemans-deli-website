@@ -55,6 +55,88 @@ type GroupedCategory = {
   items: MenuItem[];
 };
 
+type CartItem = {
+  item: MenuItem;
+  quantity: number;
+};
+
+type OrderType = "pickup" | "delivery";
+
+const orderTexts = {
+  tr: {
+    add: "Sepete Ekle",
+    cart: "Sepet",
+    item: "ürün",
+    total: "Toplam",
+    checkout: "Sipariş Ver",
+    continue: "Menüye Dön",
+    empty: "Sepetiniz boş.",
+    pickup: "Gel-Al",
+    delivery: "Paket Servis",
+    name: "Ad Soyad",
+    phone: "Telefon",
+    address: "Teslimat Adresi",
+    note: "Sipariş Notu",
+    notePlaceholder: "Örn. sos ayrı olsun",
+    submit: "Siparişi Gönder",
+    sending: "Gönderiliyor...",
+    success: "Siparişiniz alındı",
+    successDetail: "Sipariş numaranız",
+    close: "Kapat",
+    remove: "Sil",
+    orderInfo: "Sipariş Bilgileri",
+    payment: "Ödeme mağazada / teslimatta alınacaktır.",
+  },
+  en: {
+    add: "Add to Cart",
+    cart: "Cart",
+    item: "items",
+    total: "Total",
+    checkout: "Order",
+    continue: "Back to Menu",
+    empty: "Your cart is empty.",
+    pickup: "Pickup",
+    delivery: "Delivery",
+    name: "Full Name",
+    phone: "Phone",
+    address: "Delivery Address",
+    note: "Order Note",
+    notePlaceholder: "e.g. sauce on the side",
+    submit: "Place Order",
+    sending: "Sending...",
+    success: "Your order has been received",
+    successDetail: "Order number",
+    close: "Close",
+    remove: "Remove",
+    orderInfo: "Order Details",
+    payment: "Payment will be collected at pickup / delivery.",
+  },
+  ru: {
+    add: "В корзину",
+    cart: "Корзина",
+    item: "тов.",
+    total: "Итого",
+    checkout: "Заказать",
+    continue: "Вернуться в меню",
+    empty: "Корзина пуста.",
+    pickup: "Самовывоз",
+    delivery: "Доставка",
+    name: "Имя и фамилия",
+    phone: "Телефон",
+    address: "Адрес доставки",
+    note: "Комментарий",
+    notePlaceholder: "Напр. соус отдельно",
+    submit: "Отправить заказ",
+    sending: "Отправка...",
+    success: "Ваш заказ принят",
+    successDetail: "Номер заказа",
+    close: "Закрыть",
+    remove: "Удалить",
+    orderInfo: "Данные заказа",
+    payment: "Оплата при получении / доставке.",
+  },
+} as const;
+
 const BRAND_FONT =
   '"American Typewriter", "Courier New", Courier, monospace';
 
@@ -310,6 +392,20 @@ export default function MenuPage() {
   const [error, setError] =
     useState<string | null>(null);
 
+
+  const [cart, setCart] = useState<CartItem[]>([]);
+  const [cartOpen, setCartOpen] = useState(false);
+  const [checkoutOpen, setCheckoutOpen] = useState(false);
+  const [orderType, setOrderType] = useState<OrderType>("pickup");
+  const [customerName, setCustomerName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [address, setAddress] = useState("");
+  const [orderNote, setOrderNote] = useState("");
+  const [website, setWebsite] = useState("");
+  const [submittingOrder, setSubmittingOrder] = useState(false);
+  const [orderError, setOrderError] = useState<string | null>(null);
+  const [orderSuccess, setOrderSuccess] = useState<string | null>(null);
+
   const loadMenu = useCallback(async () => {
     const [categoriesResult, itemsResult] =
       await Promise.all([
@@ -472,6 +568,117 @@ export default function MenuPage() {
   function changeLanguage(nextLanguage: Language) {
     setLanguage(nextLanguage);
     setOpenProductId(null);
+  }
+
+  const cartCount = cart.reduce((sum, row) => sum + row.quantity, 0);
+  const cartTotal = cart.reduce(
+    (sum, row) => sum + Number(row.item.price || 0) * row.quantity,
+    0
+  );
+
+  function addToCart(item: MenuItem) {
+    if (!item.price || item.price <= 0) return;
+
+    setCart((current) => {
+      const existing = current.find((row) => row.item.id === item.id);
+      if (existing) {
+        return current.map((row) =>
+          row.item.id === item.id
+            ? { ...row, quantity: Math.min(20, row.quantity + 1) }
+            : row
+        );
+      }
+      return [...current, { item, quantity: 1 }];
+    });
+  }
+
+  function changeCartQuantity(itemId: number, amount: number) {
+    setCart((current) =>
+      current
+        .map((row) =>
+          row.item.id === itemId
+            ? { ...row, quantity: row.quantity + amount }
+            : row
+        )
+        .filter((row) => row.quantity > 0)
+    );
+  }
+
+  async function submitWebOrder() {
+    setOrderError(null);
+
+    if (!cart.length) {
+      setOrderError(orderTexts[language].empty);
+      return;
+    }
+
+    if (!customerName.trim() || phone.replace(/\D/g, "").length < 7) {
+      setOrderError(
+        language === "tr"
+          ? "Ad soyad ve geçerli telefon numarası gerekli."
+          : language === "ru"
+            ? "Укажите имя и действующий номер телефона."
+            : "Full name and a valid phone number are required."
+      );
+      return;
+    }
+
+    if (orderType === "delivery" && address.trim().length < 8) {
+      setOrderError(
+        language === "tr"
+          ? "Paket servis için teslimat adresi gerekli."
+          : language === "ru"
+            ? "Для доставки укажите адрес."
+            : "A delivery address is required."
+      );
+      return;
+    }
+
+    setSubmittingOrder(true);
+
+    try {
+      const response = await fetch("/api/orders/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          orderType,
+          customerName,
+          phone,
+          address,
+          note: orderNote,
+          website,
+          items: cart.map((row) => ({
+            menuItemId: row.item.id,
+            quantity: row.quantity,
+          })),
+        }),
+      });
+
+      const data = (await response.json()) as {
+        ok?: boolean;
+        orderCode?: string;
+        error?: string;
+      };
+
+      if (!response.ok || !data.ok || !data.orderCode) {
+        throw new Error(data.error || "Sipariş oluşturulamadı.");
+      }
+
+      setOrderSuccess(data.orderCode);
+      setCart([]);
+      setCustomerName("");
+      setPhone("");
+      setAddress("");
+      setOrderNote("");
+      setCheckoutOpen(false);
+      setCartOpen(false);
+    } catch (error) {
+      setOrderError(
+        error instanceof Error ? error.message : "Sipariş oluşturulamadı."
+      );
+    } finally {
+      setSubmittingOrder(false);
+    }
   }
 
   if (loading) {
@@ -659,6 +866,7 @@ export default function MenuPage() {
                       language={language}
                       openProductId={openProductId}
                       setOpenProductId={setOpenProductId}
+                      onAddToCart={addToCart}
                     />
                   </section>
                 );
@@ -740,12 +948,253 @@ export default function MenuPage() {
                       language={language}
                       openProductId={openProductId}
                       setOpenProductId={setOpenProductId}
+                      onAddToCart={addToCart}
                     />
                   </section>
                 );
               })()}
             </div>
           </>
+        )}
+
+        {cartCount > 0 && (
+          <button
+            type="button"
+            onClick={() => setCartOpen(true)}
+            className="fixed bottom-5 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-full bg-[#6e1f12] px-5 py-3.5 text-sm font-bold text-white shadow-xl md:left-auto md:right-6 md:translate-x-0"
+            style={{ fontFamily: BRAND_FONT }}
+          >
+            <span>{orderTexts[language].cart}</span>
+            <span className="rounded-full bg-white/15 px-2.5 py-1 text-xs">
+              {cartCount}
+            </span>
+            <span>{cartTotal.toLocaleString("tr-TR")} ₺</span>
+          </button>
+        )}
+
+        {(cartOpen || checkoutOpen) && (
+          <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/40 p-0 backdrop-blur-[2px] md:items-center md:p-5">
+            <div className="max-h-[92vh] w-full overflow-y-auto rounded-t-3xl bg-[#f4efe5] p-5 shadow-2xl md:max-w-xl md:rounded-3xl md:p-7">
+              <div className="flex items-center justify-between gap-4">
+                <h2
+                  className="text-2xl font-bold text-[#6e1f12]"
+                  style={{ fontFamily: BRAND_FONT }}
+                >
+                  {checkoutOpen
+                    ? orderTexts[language].orderInfo
+                    : orderTexts[language].cart}
+                </h2>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCartOpen(false);
+                    setCheckoutOpen(false);
+                    setOrderError(null);
+                  }}
+                  className="rounded-full border border-black/10 bg-white px-3 py-2 text-sm"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {!checkoutOpen ? (
+                <>
+                  <div className="mt-5 space-y-3">
+                    {cart.length === 0 ? (
+                      <p className="py-8 text-center opacity-50">
+                        {orderTexts[language].empty}
+                      </p>
+                    ) : (
+                      cart.map((row) => (
+                        <div
+                          key={row.item.id}
+                          className="flex items-center gap-3 rounded-2xl border border-[#6e1f12]/10 bg-white p-3"
+                        >
+                          <div className="min-w-0 flex-1">
+                            <p className="font-bold text-[#6e1f12]">
+                              {getProductName(row.item, language)}
+                            </p>
+                            <p className="mt-1 text-xs opacity-50">
+                              {row.item.portion || ""}
+                              {row.item.portion ? " · " : ""}
+                              {Number(row.item.price || 0).toLocaleString("tr-TR")} ₺
+                            </p>
+                          </div>
+
+                          <div className="flex items-center rounded-full border border-black/10 bg-[#f4efe5]">
+                            <button
+                              type="button"
+                              onClick={() => changeCartQuantity(row.item.id, -1)}
+                              className="px-3 py-2 font-bold"
+                            >
+                              −
+                            </button>
+                            <span className="min-w-7 text-center text-sm font-bold">
+                              {row.quantity}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => changeCartQuantity(row.item.id, 1)}
+                              className="px-3 py-2 font-bold"
+                            >
+                              +
+                            </button>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+
+                  <div className="mt-5 flex items-center justify-between border-t border-[#6e1f12]/10 pt-5 text-lg font-bold">
+                    <span>{orderTexts[language].total}</span>
+                    <span>{cartTotal.toLocaleString("tr-TR")} ₺</span>
+                  </div>
+
+                  <button
+                    type="button"
+                    disabled={!cart.length}
+                    onClick={() => {
+                      setCheckoutOpen(true);
+                      setCartOpen(false);
+                    }}
+                    className="mt-5 w-full rounded-2xl bg-[#6e1f12] px-5 py-4 font-bold text-white disabled:opacity-40"
+                  >
+                    {orderTexts[language].checkout}
+                  </button>
+                </>
+              ) : (
+                <div className="mt-5 space-y-4">
+                  <div className="grid grid-cols-2 gap-2">
+                    {(["pickup", "delivery"] as OrderType[]).map((type) => (
+                      <button
+                        key={type}
+                        type="button"
+                        onClick={() => setOrderType(type)}
+                        className={`rounded-2xl border px-4 py-3 font-bold ${
+                          orderType === type
+                            ? "border-[#6e1f12] bg-[#6e1f12] text-white"
+                            : "border-[#6e1f12]/15 bg-white text-[#6e1f12]"
+                        }`}
+                      >
+                        {type === "pickup"
+                          ? orderTexts[language].pickup
+                          : orderTexts[language].delivery}
+                      </button>
+                    ))}
+                  </div>
+
+                  <input
+                    value={customerName}
+                    onChange={(event) => setCustomerName(event.target.value)}
+                    placeholder={orderTexts[language].name}
+                    className="w-full rounded-2xl border border-black/10 bg-white px-4 py-3.5 outline-none focus:border-[#6e1f12]/50"
+                  />
+
+                  <input
+                    value={phone}
+                    onChange={(event) => setPhone(event.target.value)}
+                    inputMode="tel"
+                    placeholder={orderTexts[language].phone}
+                    className="w-full rounded-2xl border border-black/10 bg-white px-4 py-3.5 outline-none focus:border-[#6e1f12]/50"
+                  />
+
+                  {orderType === "delivery" && (
+                    <textarea
+                      value={address}
+                      onChange={(event) => setAddress(event.target.value)}
+                      placeholder={orderTexts[language].address}
+                      rows={3}
+                      className="w-full resize-none rounded-2xl border border-black/10 bg-white px-4 py-3.5 outline-none focus:border-[#6e1f12]/50"
+                    />
+                  )}
+
+                  <textarea
+                    value={orderNote}
+                    onChange={(event) => setOrderNote(event.target.value)}
+                    placeholder={`${orderTexts[language].note} · ${orderTexts[language].notePlaceholder}`}
+                    rows={2}
+                    className="w-full resize-none rounded-2xl border border-black/10 bg-white px-4 py-3.5 outline-none focus:border-[#6e1f12]/50"
+                  />
+
+                  <input
+                    value={website}
+                    onChange={(event) => setWebsite(event.target.value)}
+                    tabIndex={-1}
+                    autoComplete="off"
+                    aria-hidden="true"
+                    className="hidden"
+                  />
+
+                  <p className="text-xs leading-5 opacity-50">
+                    {orderTexts[language].payment}
+                  </p>
+
+                  {orderError && (
+                    <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">
+                      {orderError}
+                    </p>
+                  )}
+
+                  <div className="flex items-center justify-between border-t border-[#6e1f12]/10 pt-4 text-lg font-bold">
+                    <span>{orderTexts[language].total}</span>
+                    <span>{cartTotal.toLocaleString("tr-TR")} ₺</span>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => void submitWebOrder()}
+                    disabled={submittingOrder}
+                    className="w-full rounded-2xl bg-[#6e1f12] px-5 py-4 font-bold text-white disabled:opacity-50"
+                  >
+                    {submittingOrder
+                      ? orderTexts[language].sending
+                      : orderTexts[language].submit}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCheckoutOpen(false);
+                      setCartOpen(true);
+                      setOrderError(null);
+                    }}
+                    className="w-full rounded-2xl border border-[#6e1f12]/15 bg-white px-5 py-3 text-sm font-bold text-[#6e1f12]"
+                  >
+                    {orderTexts[language].continue}
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {orderSuccess && (
+          <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/45 p-5 backdrop-blur-[2px]">
+            <div className="w-full max-w-md rounded-3xl bg-[#f4efe5] p-7 text-center shadow-2xl">
+              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-[#6e1f12] text-2xl text-white">
+                ✓
+              </div>
+              <h2
+                className="mt-5 text-2xl font-bold text-[#6e1f12]"
+                style={{ fontFamily: BRAND_FONT }}
+              >
+                {orderTexts[language].success}
+              </h2>
+              <p className="mt-3 text-sm opacity-60">
+                {orderTexts[language].successDetail}
+              </p>
+              <p className="mt-1 text-xl font-bold text-[#6e1f12]">
+                {orderSuccess}
+              </p>
+              <button
+                type="button"
+                onClick={() => setOrderSuccess(null)}
+                className="mt-6 w-full rounded-2xl bg-[#6e1f12] px-5 py-3.5 font-bold text-white"
+              >
+                {orderTexts[language].close}
+              </button>
+            </div>
+          </div>
         )}
 
         <footer className="mt-10 border-t border-[#6e1f12]/12 pt-6 text-center text-xs leading-5 text-[#292821]/45">
@@ -761,11 +1210,13 @@ function CategoryProducts({
   language,
   openProductId,
   setOpenProductId,
+  onAddToCart,
 }: {
   items: MenuItem[];
   language: Language;
   openProductId: number | null;
   setOpenProductId: (id: number | null) => void;
+  onAddToCart: (item: MenuItem) => void;
 }) {
   if (items.length === 0) {
     return (
@@ -840,6 +1291,19 @@ function CategoryProducts({
                 setOpenProductId(productOpen ? null : item.id)
               }
             />
+
+
+            {item.price !== null && item.price > 0 && (
+              <div className="px-4 pb-4 md:px-6">
+                <button
+                  type="button"
+                  onClick={() => onAddToCart(item)}
+                  className="w-full rounded-xl border border-[#6e1f12]/15 bg-[#6e1f12]/5 px-4 py-2.5 text-sm font-bold text-[#6e1f12] transition hover:bg-[#6e1f12] hover:text-white md:w-auto"
+                >
+                  + {orderTexts[language].add}
+                </button>
+              </div>
+            )}
 
             {productOpen && (
               <ProductDetail
