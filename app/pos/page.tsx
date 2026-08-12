@@ -304,6 +304,53 @@ export default function PosPage() {
     window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
   }
 
+  async function acceptIncomingOrder(order: IncomingOrder) {
+    const paidOnline =
+      order.source === "trendyol" && order.payment_method !== "pending";
+
+    if (!paidOnline) {
+      // Ödeme bekleyen siparişlerde mevcut adisyon akışını aç.
+      await openIncomingOrder(order);
+      return;
+    }
+
+    const now = new Date().toISOString();
+
+    const { error } = await supabase
+      .from("pos_orders")
+      .update({
+        status: "closed",
+        closed_at: now,
+        external_status: "accepted",
+        card_amount: Number(order.total || 0),
+        cash_amount: 0,
+        meal_card_amount: 0,
+      })
+      .eq("id", order.id);
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    const { error: stockError } = await supabase.rpc(
+      "apply_stock_for_pos_order",
+      { p_order_id: order.id }
+    );
+
+    if (stockError) {
+      alert(
+        `Sipariş kabul edildi ve kapandı; stok düşümü kontrol edilmeli: ${stockError.message}`
+      );
+    }
+
+    setNewOrderNotice(null);
+    setChannelMessage(
+      `${sourceLabel(order.source)} ${order.receipt_number || `#${order.id}`} kabul edildi ve ödendi olarak kapatıldı.`
+    );
+    await loadData();
+  }
+
   async function setIncomingStage(
     orderIdValue: number,
     stage: "new" | "preparing" | "ready"
@@ -714,9 +761,16 @@ await loadData();
                             {order.order_type || "Paket"}
                           </p>
                         </div>
-                        <p className="text-xl font-bold text-[#6e1f12]">
-                          {money(Number(order.total || 0))} ₺
-                        </p>
+                        <div className="text-right">
+                          <p className="text-xl font-bold text-[#6e1f12]">
+                            {money(Number(order.total || 0))} ₺
+                          </p>
+                          {order.source === "trendyol" && order.payment_method !== "pending" && (
+                            <span className="mt-1 inline-flex rounded-full bg-green-100 px-2.5 py-1 text-[10px] font-bold text-green-800">
+                              ✓ ONLINE ÖDENDİ
+                            </span>
+                          )}
+                        </div>
                       </div>
 
                       {order.customer_phone && (
@@ -766,10 +820,12 @@ await loadData();
                         )}
                         <button
                           type="button"
-                          onClick={() => void openIncomingOrder(order)}
+                          onClick={() => void acceptIncomingOrder(order)}
                           className="rounded-xl bg-[#6e1f12] px-3 py-2 text-xs font-bold text-white"
                         >
-                          Siparişi Aç
+                          {order.source === "trendyol" && order.payment_method !== "pending"
+                            ? "✓ Kabul Et"
+                            : "Siparişi Aç"}
                         </button>
                       </div>
 

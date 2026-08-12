@@ -201,6 +201,22 @@ async function findMenuItemId(
   return data?.menu_item_id ?? null;
 }
 
+
+function trendyolPaymentMethod(pkg: TgPackage) {
+  const paymentType = firstString(pkg, [["payment", "paymentType"]])?.toUpperCase() ?? "";
+
+  // Trendyol kart/online ödemesi sipariş gelmeden önce tahsil edilmiştir.
+  if (
+    paymentType === "PAY_WITH_CARD" ||
+    paymentType.includes("CARD") ||
+    paymentType.includes("ONLINE")
+  ) {
+    return "card";
+  }
+
+  return "pending";
+}
+
 export async function POST() {
   try {
     const sellerId = getTrendyolGoSellerId();
@@ -321,7 +337,7 @@ export async function POST() {
             subtotal,
             discount_amount: sellerPromotionTotal,
             total: Number(pkg.totalPrice || subtotal),
-            payment_method: "pending",
+            payment_method: trendyolPaymentMethod(pkg),
             status: orderStatus,
             source: "trendyol",
             external_order_id: externalOrderId,
