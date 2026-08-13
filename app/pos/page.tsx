@@ -122,7 +122,9 @@ export default function PosPage() {
     useState<OnlineOrderSettings | null>(null);
   const [savingOnlineSettings, setSavingOnlineSettings] = useState(false);
   const [alertsEnabled, setAlertsEnabled] = useState(false);
+  const [alarmMuted, setAlarmMuted] = useState(false);
   const knownIncomingIdsRef = useRef<Set<number>>(new Set());
+  const alarmRepeatTimerRef = useRef<number | null>(null);
   const initialIncomingLoadedRef = useRef(false);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [activeCategoryId, setActiveCategoryId] = useState<number | null>(null);
@@ -242,6 +244,7 @@ export default function PosPage() {
 
     if (fresh.length > 0) {
       const newest = fresh[0];
+      setAlarmMuted(false);
       setNewOrderNotice(newest);
       ringNewOrder();
 
@@ -293,6 +296,7 @@ export default function PosPage() {
           ) {
             const incoming = row as IncomingOrder;
             knownIncomingIdsRef.current.add(incoming.id);
+            setAlarmMuted(false);
             setNewOrderNotice(incoming);
             ringNewOrder();
 
@@ -329,16 +333,27 @@ export default function PosPage() {
   }, [trendyolAutoSync]);
 
   useEffect(() => {
-    if (!newOrderNotice || !alertsEnabled) return;
+    if (alarmRepeatTimerRef.current) {
+      window.clearTimeout(alarmRepeatTimerRef.current);
+      alarmRepeatTimerRef.current = null;
+    }
 
-    ringNewOrder();
+    if (!newOrderNotice || !alertsEnabled || alarmMuted) return;
 
-    const timer = window.setInterval(() => {
+    // İlk alarm yeni sipariş algılandığı anda zaten çalıyor.
+    // Kabul edilmezse yalnızca 60 saniye sonra BİR KEZ daha hatırlat.
+    alarmRepeatTimerRef.current = window.setTimeout(() => {
       ringNewOrder();
-    }, 15_000);
+      alarmRepeatTimerRef.current = null;
+    }, 60_000);
 
-    return () => window.clearInterval(timer);
-  }, [newOrderNotice, alertsEnabled]);
+    return () => {
+      if (alarmRepeatTimerRef.current) {
+        window.clearTimeout(alarmRepeatTimerRef.current);
+        alarmRepeatTimerRef.current = null;
+      }
+    };
+  }, [newOrderNotice, alertsEnabled, alarmMuted]);
 
   function ringNewOrder(force = false) {
     if ((!alertsEnabled && !force) || typeof window === "undefined") return;
@@ -380,9 +395,22 @@ export default function PosPage() {
     }
   }
 
-  async function enableAlerts() {
-    setAlertsEnabled(true);
-    localStorage.setItem("lemans-pos-alerts", "1");
+  async function toggleAlerts() {
+    const next = !alertsEnabled;
+    setAlertsEnabled(next);
+    localStorage.setItem("lemans-pos-alerts", next ? "1" : "0");
+
+    if (!next) {
+      setAlarmMuted(true);
+      if (alarmRepeatTimerRef.current) {
+        window.clearTimeout(alarmRepeatTimerRef.current);
+        alarmRepeatTimerRef.current = null;
+      }
+      setChannelMessage("Yeni sipariş sesi kapatıldı.");
+      return;
+    }
+
+    setAlarmMuted(false);
     ringNewOrder(true);
 
     if (
@@ -393,6 +421,19 @@ export default function PosPage() {
     }
 
     setChannelMessage("Yeni sipariş alarmı ve tarayıcı bildirimi etkinleştirildi.");
+  }
+
+  function muteCurrentAlarm() {
+    setAlarmMuted(true);
+
+    if (alarmRepeatTimerRef.current) {
+      window.clearTimeout(alarmRepeatTimerRef.current);
+      alarmRepeatTimerRef.current = null;
+    }
+
+    setChannelMessage(
+      "Mevcut sipariş alarmı susturuldu. Yeni sipariş geldiğinde alarm tekrar çalışır."
+    );
   }
 
   async function saveOnlineSettings(
@@ -958,14 +999,14 @@ await loadData();
 
                 <button
                   type="button"
-                  onClick={() => void enableAlerts()}
+                  onClick={() => void toggleAlerts()}
                   className={`rounded-xl border px-4 py-3 text-sm font-bold ${
                     alertsEnabled
                       ? "border-amber-200 bg-amber-50 text-amber-800"
                       : "border-black/10 bg-white"
                   }`}
                 >
-                  🔔 Alarm & Bildirim: {alertsEnabled ? "Açık" : "Etkinleştir"}
+                  🔔 Alarm & Bildirim: {alertsEnabled ? "Açık" : "Kapalı"}
                 </button>
               </div>
 
@@ -1418,13 +1459,22 @@ await loadData();
                   {money(Number(newOrderNotice.total || 0))} ₺
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={() => void acceptIncomingOrder(newOrderNotice)}
-                className="rounded-xl bg-[#6e1f12] px-4 py-2 text-sm font-bold text-white"
-              >
-                ✓ Kabul Et
-              </button>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={muteCurrentAlarm}
+                  className="rounded-xl border px-4 py-2 text-sm font-bold"
+                >
+                  🔕 Sustur
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void acceptIncomingOrder(newOrderNotice)}
+                  className="rounded-xl bg-[#6e1f12] px-4 py-2 text-sm font-bold text-white"
+                >
+                  ✓ Kabul Et
+                </button>
+              </div>
             </div>
           </div>
         )}
