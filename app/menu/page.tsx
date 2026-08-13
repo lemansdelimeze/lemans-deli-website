@@ -2,11 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "../../lib/supabase";
-
+import MemberPanelComponent from "../../components/MemberPanel";
 import ProductRow from "../../components/menu/ProductRow";
 import ProductDetail from "../../components/menu/ProductDetail";
 
 type Language = "tr" | "en" | "ru";
+
 type Dietary = "none" | "vegan" | "vegetarian";
 
 type Category = {
@@ -61,6 +62,30 @@ type CartItem = {
 };
 
 type OrderType = "pickup" | "delivery";
+
+type DeliveryZone = {
+  id: number;
+  name: string;
+  minimum_order: number;
+  delivery_fee: number;
+};
+
+type Quote = {
+  subtotal: number;
+  memberDiscountPercent: number;
+  memberDiscountAmount: number;
+  deliveryFee: number;
+  total: number;
+  deliveryZone: DeliveryZone | null;
+};
+
+
+type MemberCheckoutProfile = {
+  full_name: string | null;
+  phone: string | null;
+  default_delivery_zone_id: number | null;
+  default_address: string | null;
+};
 
 type PublicOrderSettings = {
   orderingEnabled: boolean;
@@ -428,6 +453,12 @@ export default function MenuPage() {
   const [orderAvailabilityReason, setOrderAvailabilityReason] =
     useState<string | null>(null);
 
+  const [deliveryZones, setDeliveryZones] = useState<DeliveryZone[]>([]);
+  const [deliveryZoneId, setDeliveryZoneId] = useState<number | null>(null);
+  const [quote, setQuote] = useState<Quote | null>(null);
+  const [quoteLoading, setQuoteLoading] = useState(false);
+  const [memberVersion, setMemberVersion] = useState(0);
+
   const loadOrderSettings = useCallback(async () => {
     try {
       const response = await fetch("/api/orders/settings", {
@@ -459,6 +490,88 @@ export default function MenuPage() {
       setOrderAvailabilityReason(
         "Sipariş durumu şu anda kontrol edilemiyor."
       );
+    }
+  }, []);
+
+  const loadDeliveryZones = useCallback(async () => {
+    const { data, error } = await supabase
+      .from("delivery_zones")
+      .select("id,name,minimum_order,delivery_fee")
+      .eq("active", true)
+      .order("sort_order", { ascending: true });
+
+    if (!error) {
+      setDeliveryZones((data ?? []) as DeliveryZone[]);
+    }
+  }, []);
+
+  const loadQuote = useCallback(async () => {
+    if (!cart.length) {
+      setQuote(null);
+      return;
+    }
+
+    if (orderType === "delivery" && !deliveryZoneId) {
+      setQuote(null);
+      return;
+    }
+
+    setQuoteLoading(true);
+
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+
+      const response = await fetch("/api/orders/quote", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          orderType,
+          deliveryZoneId,
+          items: cart.map((row) => ({
+            menuItemId: row.item.id,
+            quantity: row.quantity,
+          })),
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.ok) {
+        setQuote(null);
+        setOrderError(data.error || "Toplam hesaplanamadı.");
+        return;
+      }
+
+      setQuote({
+        subtotal: Number(data.subtotal || 0),
+        memberDiscountPercent: Number(data.memberDiscountPercent || 0),
+        memberDiscountAmount: Number(data.memberDiscountAmount || 0),
+        deliveryFee: Number(data.deliveryFee || 0),
+        total: Number(data.total || 0),
+        deliveryZone: data.deliveryZone || null,
+      });
+      setOrderError(null);
+    } catch {
+      setQuote(null);
+    } finally {
+      setQuoteLoading(false);
+    }
+  }, [cart, orderType, deliveryZoneId, memberVersion]);
+
+  const handleMemberChange = useCallback((profile: MemberCheckoutProfile | null) => {
+    setMemberVersion((current) => current + 1);
+
+    if (!profile) return;
+
+    if (profile.full_name) setCustomerName(profile.full_name);
+    if (profile.phone) setPhone(profile.phone);
+    if (profile.default_address) setAddress(profile.default_address);
+    if (profile.default_delivery_zone_id) {
+      setDeliveryZoneId(Number(profile.default_delivery_zone_id));
     }
   }, []);
 
@@ -534,6 +647,7 @@ export default function MenuPage() {
   useEffect(() => {
     void loadMenu();
     void loadOrderSettings();
+    void loadDeliveryZones();
 
     const settingsTimer = window.setInterval(() => {
       void loadOrderSettings();
@@ -574,7 +688,11 @@ export default function MenuPage() {
       void supabase.removeChannel(menuChannel);
       void supabase.removeChannel(categoryChannel);
     };
-  }, [loadMenu, loadOrderSettings]);
+  }, [loadMenu, loadOrderSettings, loadDeliveryZones]);
+
+  useEffect(() => {
+    void loadQuote();
+  }, [loadQuote]);
 
   const groupedCategories =
     useMemo<GroupedCategory[]>(() => {
@@ -706,6 +824,11 @@ export default function MenuPage() {
       return;
     }
 
+    if (orderType === "delivery" && !deliveryZoneId) {
+      setOrderError("Teslimat bölgesi seçin.");
+      return;
+    }
+
     if (orderType === "delivery" && address.trim().length < 8) {
       setOrderError(
         language === "tr"
@@ -720,14 +843,21 @@ export default function MenuPage() {
     setSubmittingOrder(true);
 
     try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+
       const response = await fetch("/api/orders/create", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({
           orderType,
           customerName,
           phone,
           address,
+          deliveryZoneId,
           note: orderNote,
           website,
           items: cart.map((row) => ({
@@ -752,6 +882,8 @@ export default function MenuPage() {
       setCustomerName("");
       setPhone("");
       setAddress("");
+      setDeliveryZoneId(null);
+      setQuote(null);
       setOrderNote("");
       setCheckoutOpen(false);
       setCartOpen(false);
@@ -819,6 +951,8 @@ export default function MenuPage() {
               {texts[language].home as string}
             </a>
 
+            <MemberPanelComponent language={language} onMemberChange={handleMemberChange} />
+
             <div
               className="flex rounded-full border border-[#6e1f12]/15 bg-white/60 p-1"
               aria-label="Dil seçimi"
@@ -882,16 +1016,16 @@ export default function MenuPage() {
             <p className={`text-sm font-bold ${acceptingOrders ? "text-green-800" : "text-[#6e1f12]"}`}>
               {acceptingOrders
                 ? language === "tr"
-                  ? "Online sipariş açık"
+                  ? "Şimdi sipariş verebilirsiniz"
                   : language === "ru"
-                    ? "Онлайн-заказы открыты"
-                    : "Online ordering is open"
+                    ? "Сейчас можно сделать заказ"
+                    : "You can order now"
                 : orderAvailabilityReason ||
                   (language === "tr"
-                    ? "Şu anda online sipariş alamıyoruz."
+                    ? "Şu anda sipariş alamıyoruz"
                     : language === "ru"
-                      ? "Сейчас онлайн-заказы недоступны."
-                      : "Online ordering is currently unavailable.")}
+                      ? "Сейчас мы не принимаем заказы"
+                      : "We're not taking orders right now")}
             </p>
 
             {orderSettings && acceptingOrders && (
@@ -1216,12 +1350,43 @@ export default function MenuPage() {
                     ))}
                   </div>
 
-                  {orderSettings && (
-                    <p className="text-xs opacity-50">
-                      {orderType === "delivery"
-                        ? `${orderTexts[language].delivery} · minimum ${orderSettings.deliveryMinimum.toLocaleString("tr-TR")} ₺`
-                        : `${orderTexts[language].pickup} · minimum ${orderSettings.pickupMinimum.toLocaleString("tr-TR")} ₺`}
-                    </p>
+                  {orderType === "delivery" ? (
+                    <div>
+                      <label className="mb-1 block text-xs font-bold text-[#6e1f12]">
+                        Teslimat Bölgesi
+                      </label>
+                      <select
+                        value={deliveryZoneId ?? ""}
+                        onChange={(event) =>
+                          setDeliveryZoneId(
+                            event.target.value
+                              ? Number(event.target.value)
+                              : null
+                          )
+                        }
+                        className="w-full rounded-2xl border border-black/10 bg-white px-4 py-3.5 outline-none focus:border-[#6e1f12]/50"
+                      >
+                        <option value="">Bölge seçin</option>
+                        {deliveryZones.map((zone) => (
+                          <option key={zone.id} value={zone.id}>
+                            {zone.name} · min.{" "}
+                            {Number(zone.minimum_order).toLocaleString("tr-TR")} ₺
+                            {Number(zone.delivery_fee) > 0
+                              ? ` · +${Number(zone.delivery_fee).toLocaleString(
+                                  "tr-TR"
+                                )} ₺ teslimat`
+                              : " · ücretsiz teslimat"}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  ) : (
+                    orderSettings && (
+                      <p className="text-xs opacity-50">
+                        {orderTexts[language].pickup} · minimum{" "}
+                        {orderSettings.pickupMinimum.toLocaleString("tr-TR")} ₺
+                      </p>
+                    )
                   )}
 
                   <input
@@ -1276,15 +1441,61 @@ export default function MenuPage() {
                     </p>
                   )}
 
-                  <div className="flex items-center justify-between border-t border-[#6e1f12]/10 pt-4 text-lg font-bold">
-                    <span>{orderTexts[language].total}</span>
-                    <span>{cartTotal.toLocaleString("tr-TR")} ₺</span>
+                  <div className="space-y-2 border-t border-[#6e1f12]/10 pt-4">
+                    <div className="flex items-center justify-between text-sm">
+                      <span>Ürünler</span>
+                      <span>
+                        {(quote?.subtotal ?? cartTotal).toLocaleString("tr-TR")} ₺
+                      </span>
+                    </div>
+
+                    {quote && quote.memberDiscountAmount > 0 && (
+                      <div className="flex items-center justify-between text-sm text-green-700">
+                        <span>
+                          Üye indirimi %{quote.memberDiscountPercent}
+                        </span>
+                        <span>
+                          -{quote.memberDiscountAmount.toLocaleString("tr-TR")} ₺
+                        </span>
+                      </div>
+                    )}
+
+                    {orderType === "delivery" && quote && (
+                      <div className="flex items-center justify-between text-sm">
+                        <span>
+                          Teslimat
+                          {quote.deliveryZone
+                            ? ` · ${quote.deliveryZone.name}`
+                            : ""}
+                        </span>
+                        <span>
+                          {quote.deliveryFee > 0
+                            ? `+${quote.deliveryFee.toLocaleString("tr-TR")} ₺`
+                            : "Ücretsiz"}
+                        </span>
+                      </div>
+                    )}
+
+                    <div className="flex items-center justify-between pt-1 text-lg font-bold">
+                      <span>{orderTexts[language].total}</span>
+                      <span>
+                        {quoteLoading
+                          ? "..."
+                          : (quote?.total ?? cartTotal).toLocaleString("tr-TR")} ₺
+                      </span>
+                    </div>
                   </div>
 
                   <button
                     type="button"
                     onClick={() => void submitWebOrder()}
-                    disabled={submittingOrder || !acceptingOrders}
+                    disabled={
+                      submittingOrder ||
+                      !acceptingOrders ||
+                      quoteLoading ||
+                      !quote ||
+                      (orderType === "delivery" && !deliveryZoneId)
+                    }
                     className="w-full rounded-2xl bg-[#6e1f12] px-5 py-4 font-bold text-white disabled:opacity-50"
                   >
                     {submittingOrder

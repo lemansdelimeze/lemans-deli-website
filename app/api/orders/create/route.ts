@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 import { supabaseAdmin } from "../../../../lib/supabaseAdmin";
 
 type RequestedItem = {
@@ -12,19 +13,10 @@ type CreateOrderBody = {
   phone?: string;
   address?: string;
   note?: string;
-  website?: string; // honeypot
+  website?: string;
+  deliveryZoneId?: number | null;
   items?: RequestedItem[];
 };
-
-function cleanText(value: unknown, maxLength: number) {
-  if (typeof value !== "string") return "";
-  return value.trim().slice(0, maxLength);
-}
-
-function normalizePhone(value: string) {
-  return value.replace(/[^0-9+]/g, "").slice(0, 20);
-}
-
 
 type OrderSettings = {
   ordering_enabled: boolean;
@@ -38,6 +30,15 @@ type OrderSettings = {
   closed_message: string;
 };
 
+function cleanText(value: unknown, maxLength: number) {
+  if (typeof value !== "string") return "";
+  return value.trim().slice(0, maxLength);
+}
+
+function normalizePhone(value: string) {
+  return value.replace(/[^0-9+]/g, "").slice(0, 20);
+}
+
 function turkeyMinutesNow() {
   const parts = new Intl.DateTimeFormat("en-GB", {
     timeZone: "Europe/Istanbul",
@@ -48,6 +49,7 @@ function turkeyMinutesNow() {
 
   const hour = Number(parts.find((part) => part.type === "hour")?.value ?? 0);
   const minute = Number(parts.find((part) => part.type === "minute")?.value ?? 0);
+
   return hour * 60 + minute;
 }
 
@@ -79,6 +81,54 @@ async function getOrderSettings(): Promise<OrderSettings> {
   return data as OrderSettings;
 }
 
+async function getAuthenticatedCustomer(request: NextRequest) {
+  const authorization = request.headers.get("authorization");
+
+  if (!authorization?.startsWith("Bearer ")) {
+    return {
+      userId: null as string | null,
+      discountPercent: 0,
+    };
+  }
+
+  const token = authorization.slice(7);
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  if (!supabaseUrl || !supabaseAnonKey) {
+    return {
+      userId: null as string | null,
+      discountPercent: 0,
+    };
+  }
+
+  const authClient = createClient(supabaseUrl, supabaseAnonKey);
+  const { data: authData } = await authClient.auth.getUser(token);
+
+  if (!authData.user) {
+    return {
+      userId: null as string | null,
+      discountPercent: 0,
+    };
+  }
+
+  const { data: profile, error } = await supabaseAdmin
+    .from("customer_profiles")
+    .select("discount_percent,discount_active,active")
+    .eq("user_id", authData.user.id)
+    .maybeSingle();
+
+  if (error) throw error;
+
+  return {
+    userId: authData.user.id,
+    discountPercent:
+      profile?.active && profile?.discount_active
+        ? Number(profile.discount_percent ?? 0)
+        : 0,
+  };
+}
+
 function makeOrderCode() {
   const now = new Date();
   const stamp = [
@@ -98,7 +148,6 @@ export async function POST(request: NextRequest) {
   try {
     const body = (await request.json()) as CreateOrderBody;
 
-    // Basit bot honeypot'ı. Normal kullanıcı bu alanı hiç görmez/doldurmaz.
     if (cleanText(body.website, 200)) {
       return NextResponse.json({ ok: true });
     }
@@ -204,7 +253,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // FİYATI CLIENT'TAN ALMIYORUZ. Güncel fiyatı DB'den tekrar okuyoruz.
     const { data: products, error: productError } = await supabaseAdmin
       .from("menu_items")
       .select("id,name,name_tr,price,portion,active")
@@ -228,7 +276,9 @@ export async function POST(request: NextRequest) {
       const unitPrice = Number(product.price ?? 0);
 
       if (!Number.isFinite(unitPrice) || unitPrice <= 0) {
-        throw new Error(`${product.name_tr || product.name || "Ürün"} için geçerli fiyat yok.`);
+        throw new Error(
+          `${product.name_tr || product.name || "Ürün"} için geçerli fiyat yok.`
+        );
       }
 
       return {
@@ -243,14 +293,46 @@ export async function POST(request: NextRequest) {
       };
     });
 
-    const total = lines.reduce((sum, line) => sum + line.line_total, 0);
+    const subtotal = lines.reduce((sum, line) => sum + line.line_total, 0);
 
-    const minimum =
-      orderType === "delivery"
-        ? Number(settings.delivery_minimum || 0)
-        : Number(settings.pickup_minimum || 0);
+    let deliveryZoneId: number | null = null;
+    let deliveryFee = 0;
+    let minimum = Number(settings.pickup_minimum || 0);
 
-    if (total < minimum) {
+    if (orderType === "delivery") {
+      deliveryZoneId = Number(body.deliveryZoneId);
+
+      if (!Number.isInteger(deliveryZoneId) || deliveryZoneId <= 0) {
+        return NextResponse.json(
+          { ok: false, error: "Teslimat bölgesi seçin." },
+          { status: 400 }
+        );
+      }
+
+      const { data: zone, error: zoneError } = await supabaseAdmin
+        .from("delivery_zones")
+        .select("id,name,minimum_order,delivery_fee")
+        .eq("id", deliveryZoneId)
+        .eq("active", true)
+        .single();
+
+      if (zoneError) throw zoneError;
+
+      minimum = Number(zone.minimum_order ?? 0);
+      deliveryFee = Number(zone.delivery_fee ?? 0);
+
+      if (subtotal < minimum) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: `${zone.name} için minimum ürün tutarı ${minimum.toLocaleString(
+              "tr-TR"
+            )} ₺.`,
+          },
+          { status: 409 }
+        );
+      }
+    } else if (subtotal < minimum) {
       return NextResponse.json(
         {
           ok: false,
@@ -260,6 +342,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const customerAuth = await getAuthenticatedCustomer(request);
+    const memberDiscountPercent = customerAuth.discountPercent;
+    const memberDiscountAmount =
+      Math.round(subtotal * (memberDiscountPercent / 100) * 100) / 100;
+
+    const total = subtotal - memberDiscountAmount + deliveryFee;
     const orderCode = makeOrderCode();
 
     const { data: order, error: orderError } = await supabaseAdmin
@@ -270,9 +358,15 @@ export async function POST(request: NextRequest) {
         table_id: null,
         customer_name: customerName,
         customer_phone: phone,
+        customer_user_id: customerAuth.userId,
         delivery_address: orderType === "delivery" ? address : null,
+        delivery_zone_id: orderType === "delivery" ? deliveryZoneId : null,
+        delivery_fee: deliveryFee,
         order_note: note || null,
-        subtotal: total,
+        subtotal,
+        discount_amount: memberDiscountAmount,
+        member_discount_percent: memberDiscountPercent,
+        member_discount_amount: memberDiscountAmount,
         total,
         payment_method: "pending",
         status: "open",
@@ -299,10 +393,33 @@ export async function POST(request: NextRequest) {
       throw itemError;
     }
 
+    if (customerAuth.userId) {
+      const { data: profile } = await supabaseAdmin
+        .from("customer_profiles")
+        .select("order_count,total_spent")
+        .eq("user_id", customerAuth.userId)
+        .maybeSingle();
+
+      if (profile) {
+        await supabaseAdmin
+          .from("customer_profiles")
+          .update({
+            order_count: Number(profile.order_count ?? 0) + 1,
+            total_spent: Number(profile.total_spent ?? 0) + total,
+            last_order_at: new Date().toISOString(),
+          })
+          .eq("user_id", customerAuth.userId);
+      }
+    }
+
     return NextResponse.json({
       ok: true,
       orderId: order.id,
       orderCode,
+      subtotal,
+      memberDiscountPercent,
+      memberDiscountAmount,
+      deliveryFee,
       total,
       orderType,
       message: "Siparişiniz alındı.",
