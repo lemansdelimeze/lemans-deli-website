@@ -125,6 +125,7 @@ export default function PosPage() {
   const [alarmMuted, setAlarmMuted] = useState(false);
   const knownIncomingIdsRef = useRef<Set<number>>(new Set());
   const alarmRepeatTimerRef = useRef<number | null>(null);
+  const alarmAudioRef = useRef<HTMLAudioElement | null>(null);
   const initialIncomingLoadedRef = useRef(false);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [activeCategoryId, setActiveCategoryId] = useState<number | null>(null);
@@ -359,40 +360,53 @@ export default function PosPage() {
     if ((!alertsEnabled && !force) || typeof window === "undefined") return;
 
     try {
-      const AudioContextClass =
-        window.AudioContext ||
-        (window as typeof window & {
-          webkitAudioContext?: typeof AudioContext;
-        }).webkitAudioContext;
+      let audio = alarmAudioRef.current;
+      if (!audio) {
+        audio = new Audio("/pos-alarm.wav");
+        audio.preload = "auto";
+        audio.volume = 1;
+        alarmAudioRef.current = audio;
+      }
 
-      if (!AudioContextClass) return;
+      audio.pause();
+      audio.currentTime = 0;
 
-      const context = new AudioContextClass();
-      const now = context.currentTime;
+      void audio.play().catch(() => {
+        try {
+          const AudioContextClass =
+            window.AudioContext ||
+            (window as typeof window & {
+              webkitAudioContext?: typeof AudioContext;
+            }).webkitAudioContext;
 
-      [0, 0.22, 0.44].forEach((offset) => {
-        const oscillator = context.createOscillator();
-        const gain = context.createGain();
+          if (!AudioContextClass) return;
 
-        oscillator.type = "sine";
-        oscillator.frequency.setValueAtTime(880, now + offset);
-        gain.gain.setValueAtTime(0.0001, now + offset);
-        gain.gain.exponentialRampToValueAtTime(0.25, now + offset + 0.02);
-        gain.gain.exponentialRampToValueAtTime(0.0001, now + offset + 0.16);
+          const context = new AudioContextClass();
+          const now = context.currentTime;
 
-        oscillator.connect(gain);
-        gain.connect(context.destination);
+          [0, 0.25, 0.5, 0.75].forEach((offset, index) => {
+            const oscillator = context.createOscillator();
+            const gain = context.createGain();
 
-        oscillator.start(now + offset);
-        oscillator.stop(now + offset + 0.18);
+            oscillator.type = "square";
+            oscillator.frequency.setValueAtTime(
+              index % 2 === 0 ? 1200 : 700,
+              now + offset
+            );
+            gain.gain.setValueAtTime(0.0001, now + offset);
+            gain.gain.exponentialRampToValueAtTime(0.55, now + offset + 0.01);
+            gain.gain.exponentialRampToValueAtTime(0.0001, now + offset + 0.21);
+
+            oscillator.connect(gain);
+            gain.connect(context.destination);
+            oscillator.start(now + offset);
+            oscillator.stop(now + offset + 0.22);
+          });
+
+          window.setTimeout(() => void context.close(), 1500);
+        } catch {}
       });
-
-      window.setTimeout(() => {
-        void context.close();
-      }, 1200);
-    } catch {
-      // Tarayıcı otomatik sesi engellerse POS çalışmaya devam eder.
-    }
+    } catch {}
   }
 
   async function toggleAlerts() {
@@ -411,6 +425,19 @@ export default function PosPage() {
     }
 
     setAlarmMuted(false);
+
+    try {
+      let audio = alarmAudioRef.current;
+      if (!audio) {
+        audio = new Audio("/pos-alarm.wav");
+        audio.preload = "auto";
+        audio.volume = 1;
+        alarmAudioRef.current = audio;
+      }
+      audio.currentTime = 0;
+      await audio.play();
+    } catch {}
+
     ringNewOrder(true);
 
     if (
@@ -1007,6 +1034,13 @@ await loadData();
                   }`}
                 >
                   🔔 Alarm & Bildirim: {alertsEnabled ? "Açık" : "Kapalı"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => ringNewOrder(true)}
+                  className="rounded-xl border-2 border-red-300 bg-red-50 px-4 py-3 text-sm font-black text-red-800"
+                >
+                  🚨 TEST ALARMI
                 </button>
               </div>
 

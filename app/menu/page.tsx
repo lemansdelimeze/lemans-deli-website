@@ -5,8 +5,10 @@ import { supabase } from "../../lib/supabase";
 import MemberPanelComponent from "../../components/MemberPanel";
 import ProductRow from "../../components/menu/ProductRow";
 import ProductDetail from "../../components/menu/ProductDetail";
-
-type Language = "tr" | "en" | "ru";
+import {
+  useLanguage,
+  type Language,
+} from "../../components/LanguageContext";
 
 type Dietary = "none" | "vegan" | "vegetarian";
 
@@ -417,11 +419,9 @@ function normalizeSpicyLevel(value: number | null) {
 }
 
 export default function MenuPage() {
+  const { language, setLanguage } = useLanguage();
   const [categories, setCategories] = useState<Category[]>([]);
   const [items, setItems] = useState<MenuItem[]>([]);
-
-  const [language, setLanguage] =
-    useState<Language>("tr");
 
   const [openCategoryId, setOpenCategoryId] =
     useState<number | null>(null);
@@ -938,7 +938,7 @@ export default function MenuPage() {
             <img
               src="/logo-horizontal.png"
               alt="Leman's Deli"
-              className="h-12 w-auto max-w-[150px] object-contain object-left sm:h-14 sm:max-w-[240px]"
+              className="h-16 w-auto max-w-[210px] object-contain object-left sm:h-20 sm:max-w-[310px]"
             />
           </a>
 

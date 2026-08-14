@@ -2,13 +2,25 @@
 
 import { useEffect, useState } from "react";
 import HomeContent from "../components/HomeContent";
-
-type Language = "tr" | "en" | "ru";
+import {
+  useLanguage,
+  type Language,
+} from "../components/LanguageContext";
 
 const BRAND_FONT =
   '"American Typewriter", "Courier New", Courier, monospace';
 
-const text = {
+const text: Record<
+  Language,
+  {
+    menu: string;
+    home: string;
+    contact: string;
+    call: string;
+    whatsapp: string;
+    directions: string;
+  }
+> = {
   tr: {
     menu: "Menü & Sipariş",
     home: "Ana Sayfaya Devam Et",
@@ -33,10 +45,10 @@ const text = {
     whatsapp: "WhatsApp",
     directions: "Как добраться",
   },
-} satisfies Record<Language, Record<string, string>>;
+};
 
 export default function RootPage() {
-  const [language, setLanguage] = useState<Language>("tr");
+  const { language, setLanguage } = useLanguage();
   const [showEntrance, setShowEntrance] = useState(true);
   const [contactOpen, setContactOpen] = useState(false);
 
@@ -97,8 +109,8 @@ export default function RootPage() {
             <div className="space-y-3">
               <a
                 href="/menu"
-                className="flex min-h-[58px] w-full items-center justify-center rounded-2xl bg-[#922800] px-6 py-4 text-center text-[15px] font-bold tracking-[0.04em] text-white transition hover:bg-[#a9360d]"
-                style={{ fontFamily: BRAND_FONT }}
+                className="flex min-h-[58px] w-full items-center justify-center rounded-2xl bg-[#922800] px-6 py-4 text-center text-[15px] font-bold tracking-[0.04em] !text-white transition hover:bg-[#a9360d]"
+                style={{ fontFamily: BRAND_FONT, color: "#ffffff", fontWeight: 700 }}
               >
                 {t.menu}
               </a>

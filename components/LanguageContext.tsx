@@ -15,30 +15,48 @@ type LanguageContextType = {
   setLanguage: (language: Language) => void;
 };
 
+const STORAGE_KEY = "lemans-language";
+
 const LanguageContext = createContext<LanguageContextType | undefined>(
   undefined
 );
+
+function isLanguage(value: string | null): value is Language {
+  return value === "tr" || value === "en" || value === "ru";
+}
 
 export function LanguageProvider({ children }: { children: ReactNode }) {
   const [language, setLanguageState] = useState<Language>("tr");
 
   useEffect(() => {
-    const savedLanguage = window.localStorage.getItem(
-      "lemans-language"
-    ) as Language | null;
+    const savedLanguage = window.localStorage.getItem(STORAGE_KEY);
 
-    if (
-      savedLanguage === "tr" ||
-      savedLanguage === "en" ||
-      savedLanguage === "ru"
-    ) {
+    if (isLanguage(savedLanguage)) {
       setLanguageState(savedLanguage);
+      document.documentElement.lang = savedLanguage;
+    } else {
+      document.documentElement.lang = "tr";
     }
+
+    function handleStorage(event: StorageEvent) {
+      if (event.key !== STORAGE_KEY) return;
+
+      if (isLanguage(event.newValue)) {
+        setLanguageState(event.newValue);
+        document.documentElement.lang = event.newValue;
+      }
+    }
+
+    window.addEventListener("storage", handleStorage);
+
+    return () => {
+      window.removeEventListener("storage", handleStorage);
+    };
   }, []);
 
   function setLanguage(newLanguage: Language) {
     setLanguageState(newLanguage);
-    window.localStorage.setItem("lemans-language", newLanguage);
+    window.localStorage.setItem(STORAGE_KEY, newLanguage);
     document.documentElement.lang = newLanguage;
   }
 

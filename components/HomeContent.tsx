@@ -11,7 +11,7 @@ const pageTranslations = {
     heroDescription:
       "Günlük hazırlanan mezeler, seçkin yerel ve dünya peynirleri, kaliteli deli etleri ve özenle hazırlanan gurme sandviçler.",
     slogan: "İyi malzeme. Doğru tarif. Dürüst fiyat.",
-    menuButton: "Tezgahtan Seçmeler",
+    menuButton: "Menü & Sipariş",
     directions: "Yol Tarifi",
 
     aboutEyebrow: "Biz Kimiz?",
@@ -77,7 +77,7 @@ const pageTranslations = {
     heroDescription:
       "Freshly prepared meze, selected local and international cheeses, quality deli meats and carefully made gourmet sandwiches.",
     slogan: "Good ingredients. Proper recipes. Fair prices.",
-    menuButton: "From the Counter",
+    menuButton: "Menu & Order",
     directions: "Get Directions",
 
     aboutEyebrow: "Our Story",
@@ -143,7 +143,7 @@ const pageTranslations = {
     heroDescription:
       "Свежие мезе, отборные местные и зарубежные сыры, качественные мясные деликатесы и авторские сэндвичи.",
     slogan: "Хорошие продукты. Правильные рецепты. Честные цены.",
-    menuButton: "С витрины",
+    menuButton: "Меню и заказ",
     directions: "Как добраться",
 
     aboutEyebrow: "О нас",
@@ -355,8 +355,8 @@ const selections = [
 
               <div className="mt-10 flex flex-col gap-4 sm:flex-row">
                 <a
-                  href="#menu"
-                  className="inline-flex items-center justify-center rounded-full bg-[#9a2e09] px-8 py-4 text-sm font-semibold uppercase tracking-[0.12em] text-white transition duration-300 hover:-translate-y-1 hover:bg-[#b13b12]"
+                  href="/menu"
+                  className="inline-flex items-center justify-center rounded-full bg-[#922800] px-8 py-4 text-sm font-bold uppercase tracking-[0.12em] text-white transition duration-300 hover:-translate-y-1 hover:bg-[#a9360d]"
                 >
                   {text.menuButton}
                 </a>
