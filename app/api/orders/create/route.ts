@@ -10,11 +10,13 @@ type RequestedItem = {
 type CreateOrderBody = {
   orderType?: "pickup" | "delivery";
   customerName?: string;
+  email?: string;
   phone?: string;
   address?: string;
   note?: string;
   website?: string;
   deliveryZoneId?: number | null;
+  language?: "tr" | "en" | "ru";
   items?: RequestedItem[];
 };
 
@@ -27,6 +29,8 @@ type OrderSettings = {
   close_time: string;
   pickup_minimum: number | string;
   delivery_minimum: number | string;
+  prep_time_min: number | string;
+  prep_time_max: number | string;
   closed_message: string;
 };
 
@@ -72,7 +76,7 @@ async function getOrderSettings(): Promise<OrderSettings> {
   const { data, error } = await supabaseAdmin
     .from("online_order_settings")
     .select(
-      "ordering_enabled,pickup_enabled,delivery_enabled,auto_schedule_enabled,open_time,close_time,pickup_minimum,delivery_minimum,closed_message"
+      "ordering_enabled,pickup_enabled,delivery_enabled,auto_schedule_enabled,open_time,close_time,pickup_minimum,delivery_minimum,prep_time_min,prep_time_max,closed_message"
     )
     .eq("id", 1)
     .single();
@@ -87,6 +91,7 @@ async function getAuthenticatedCustomer(request: NextRequest) {
   if (!authorization?.startsWith("Bearer ")) {
     return {
       userId: null as string | null,
+      email: null as string | null,
       discountPercent: 0,
     };
   }
@@ -98,6 +103,7 @@ async function getAuthenticatedCustomer(request: NextRequest) {
   if (!supabaseUrl || !supabaseAnonKey) {
     return {
       userId: null as string | null,
+      email: null as string | null,
       discountPercent: 0,
     };
   }
@@ -108,6 +114,7 @@ async function getAuthenticatedCustomer(request: NextRequest) {
   if (!authData.user) {
     return {
       userId: null as string | null,
+      email: null as string | null,
       discountPercent: 0,
     };
   }
@@ -122,11 +129,212 @@ async function getAuthenticatedCustomer(request: NextRequest) {
 
   return {
     userId: authData.user.id,
+    email: authData.user.email ?? null,
     discountPercent:
       profile?.active && profile?.discount_active
         ? Number(profile.discount_percent ?? 0)
         : 0,
   };
+}
+
+
+function normalizeEmail(value: unknown) {
+  if (typeof value !== "string") return "";
+  return value.trim().toLowerCase().slice(0, 254);
+}
+
+function isValidEmail(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
+function escapeHtml(value: unknown) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function money(value: number) {
+  return new Intl.NumberFormat("tr-TR", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value);
+}
+
+async function sendOrderConfirmationEmail(args: {
+  to: string;
+  language: "tr" | "en" | "ru";
+  customerName: string;
+  orderCode: string;
+  orderType: "pickup" | "delivery";
+  lines: Array<{
+    product_name: string;
+    quantity: number;
+    unit_price: number;
+    line_total: number;
+  }>;
+  subtotal: number;
+  memberDiscountAmount: number;
+  deliveryFee: number;
+  total: number;
+  prepTimeMin: number;
+  prepTimeMax: number;
+}) {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) {
+    console.warn("RESEND_API_KEY tanımlı değil; sipariş onay maili gönderilmedi.");
+    return false;
+  }
+
+  const copy = {
+    tr: {
+      subject: `Siparişinizi aldık · ${args.orderCode}`,
+      title: "Siparişinizi aldık",
+      hello: `Merhaba ${args.customerName},`,
+      intro: "Siparişiniz Leman's Deli'ye ulaştı.",
+      orderNo: "Sipariş No",
+      orderType: "Sipariş Türü",
+      pickup: "Gel-Al",
+      delivery: "Paket Servis",
+      prep: "Tahmini hazırlık",
+      minutes: "dk",
+      subtotal: "Ara Toplam",
+      discount: "Üye İndirimi",
+      deliveryFee: "Paket Ücreti",
+      total: "Toplam",
+      footer: "Siparişinizle ilgili bir sorunuz olursa bize WhatsApp veya telefon üzerinden ulaşabilirsiniz.",
+    },
+    en: {
+      subject: `We received your order · ${args.orderCode}`,
+      title: "We received your order",
+      hello: `Hello ${args.customerName},`,
+      intro: "Your order has reached Leman's Deli.",
+      orderNo: "Order No",
+      orderType: "Order Type",
+      pickup: "Pickup",
+      delivery: "Delivery",
+      prep: "Estimated preparation",
+      minutes: "min",
+      subtotal: "Subtotal",
+      discount: "Member Discount",
+      deliveryFee: "Delivery Fee",
+      total: "Total",
+      footer: "If you have any questions about your order, you can reach us by WhatsApp or phone.",
+    },
+    ru: {
+      subject: `Мы получили ваш заказ · ${args.orderCode}`,
+      title: "Мы получили ваш заказ",
+      hello: `Здравствуйте, ${args.customerName}!`,
+      intro: "Ваш заказ поступил в Leman's Deli.",
+      orderNo: "Номер заказа",
+      orderType: "Тип заказа",
+      pickup: "Самовывоз",
+      delivery: "Доставка",
+      prep: "Ориентировочное время приготовления",
+      minutes: "мин",
+      subtotal: "Сумма",
+      discount: "Скидка участника",
+      deliveryFee: "Стоимость доставки",
+      total: "Итого",
+      footer: "Если у вас есть вопросы по заказу, свяжитесь с нами по WhatsApp или телефону.",
+    },
+  } as const;
+
+  const t = copy[args.language];
+  const itemRows = args.lines
+    .map(
+      (line) => `
+        <tr>
+          <td style="padding:10px 0;border-bottom:1px solid #ead8ce;color:#2a1711;">
+            ${escapeHtml(line.product_name)} × ${line.quantity}
+          </td>
+          <td style="padding:10px 0;border-bottom:1px solid #ead8ce;text-align:right;color:#2a1711;font-weight:700;">
+            ${money(line.line_total)} ₺
+          </td>
+        </tr>`
+    )
+    .join("");
+
+  const discountRow =
+    args.memberDiscountAmount > 0
+      ? `<tr><td style="padding:7px 0;color:#6b5a51;">${t.discount}</td><td style="padding:7px 0;text-align:right;color:#2f7a48;font-weight:700;">−${money(args.memberDiscountAmount)} ₺</td></tr>`
+      : "";
+
+  const deliveryRow =
+    args.deliveryFee > 0
+      ? `<tr><td style="padding:7px 0;color:#6b5a51;">${t.deliveryFee}</td><td style="padding:7px 0;text-align:right;color:#2a1711;font-weight:700;">${money(args.deliveryFee)} ₺</td></tr>`
+      : "";
+
+  const html = `
+    <div style="margin:0;padding:32px 16px;background:#f5efe7;font-family:Arial,Helvetica,sans-serif;color:#2a1711;">
+      <div style="max-width:580px;margin:0 auto;background:#fffaf4;border:1px solid #ead8ce;border-radius:24px;overflow:hidden;">
+        <div style="padding:30px 28px 18px;text-align:center;">
+          <img src="https://lemansdeli.com/logo-horizontal.png" alt="Leman's Deli" width="250" style="display:block;width:250px;max-width:82%;height:auto;margin:0 auto;" />
+        </div>
+
+        <div style="padding:8px 30px 34px;">
+          <h1 style="margin:0 0 14px;text-align:center;font-family:'Courier New',Courier,monospace;font-size:28px;color:#922800;">
+            ${t.title}
+          </h1>
+          <p style="margin:0 0 6px;font-size:16px;line-height:1.6;">${escapeHtml(t.hello)}</p>
+          <p style="margin:0 0 24px;font-size:15px;line-height:1.6;color:#6b5a51;">${t.intro}</p>
+
+          <div style="margin-bottom:22px;padding:16px 18px;background:#f5efe7;border-radius:16px;">
+            <div style="margin-bottom:7px;"><strong>${t.orderNo}:</strong> ${escapeHtml(args.orderCode)}</div>
+            <div style="margin-bottom:7px;"><strong>${t.orderType}:</strong> ${args.orderType === "delivery" ? t.delivery : t.pickup}</div>
+            <div><strong>${t.prep}:</strong> ${args.prepTimeMin}–${args.prepTimeMax} ${t.minutes}</div>
+          </div>
+
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;font-size:14px;">
+            ${itemRows}
+          </table>
+
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-top:16px;border-collapse:collapse;font-size:14px;">
+            <tr><td style="padding:7px 0;color:#6b5a51;">${t.subtotal}</td><td style="padding:7px 0;text-align:right;color:#2a1711;font-weight:700;">${money(args.subtotal)} ₺</td></tr>
+            ${discountRow}
+            ${deliveryRow}
+            <tr>
+              <td style="padding:12px 0 0;border-top:1px solid #ead8ce;color:#922800;font-size:17px;font-weight:800;">${t.total}</td>
+              <td style="padding:12px 0 0;border-top:1px solid #ead8ce;text-align:right;color:#922800;font-size:18px;font-weight:800;">${money(args.total)} ₺</td>
+            </tr>
+          </table>
+
+          <p style="margin:26px 0 0;font-size:12px;line-height:1.6;text-align:center;color:#8a756a;">
+            ${t.footer}
+          </p>
+        </div>
+
+        <div style="border-top:1px solid #ead8ce;padding:18px 24px;text-align:center;font-size:12px;color:#9a8478;">
+          Leman's Deli · Kaş · +90 530 700 57 04
+        </div>
+      </div>
+    </div>`;
+
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+      "User-Agent": "lemans-deli-order-api/1.0",
+      "Idempotency-Key": `order-confirmation-${args.orderCode}`,
+    },
+    body: JSON.stringify({
+      from: "Leman's Deli <no-reply@lemansdeli.com>",
+      to: [args.to],
+      subject: t.subject,
+      html,
+    }),
+  });
+
+  if (!response.ok) {
+    const detail = await response.text();
+    console.error("RESEND ORDER EMAIL ERROR:", response.status, detail);
+    return false;
+  }
+
+  return true;
 }
 
 function makeOrderCode() {
@@ -154,6 +362,9 @@ export async function POST(request: NextRequest) {
 
     const orderType = body.orderType === "delivery" ? "delivery" : "pickup";
     const customerName = cleanText(body.customerName, 120);
+    const submittedEmail = normalizeEmail(body.email);
+    const language =
+      body.language === "en" || body.language === "ru" ? body.language : "tr";
     const phone = normalizePhone(cleanText(body.phone, 40));
     const address = cleanText(body.address, 500);
     const note = cleanText(body.note, 500);
@@ -212,6 +423,16 @@ export async function POST(request: NextRequest) {
     if (phone.replace(/\D/g, "").length < 7) {
       return NextResponse.json(
         { ok: false, error: "Geçerli bir telefon numarası gerekli." },
+        { status: 400 }
+      );
+    }
+
+    const customerAuth = await getAuthenticatedCustomer(request);
+    const customerEmail = normalizeEmail(customerAuth.email || submittedEmail);
+
+    if (!isValidEmail(customerEmail)) {
+      return NextResponse.json(
+        { ok: false, error: "Geçerli bir e-posta adresi gerekli." },
         { status: 400 }
       );
     }
@@ -342,7 +563,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const customerAuth = await getAuthenticatedCustomer(request);
     const memberDiscountPercent = customerAuth.discountPercent;
     const memberDiscountAmount =
       Math.round(subtotal * (memberDiscountPercent / 100) * 100) / 100;
@@ -357,6 +577,7 @@ export async function POST(request: NextRequest) {
         order_type: orderType === "delivery" ? "Paket" : "Gel-Al",
         table_id: null,
         customer_name: customerName,
+        customer_email: customerEmail,
         customer_phone: phone,
         customer_user_id: customerAuth.userId,
         delivery_address: orderType === "delivery" ? address : null,
@@ -412,6 +633,27 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    let confirmationEmailSent = false;
+
+    try {
+      confirmationEmailSent = await sendOrderConfirmationEmail({
+        to: customerEmail,
+        language,
+        customerName,
+        orderCode,
+        orderType,
+        lines,
+        subtotal,
+        memberDiscountAmount,
+        deliveryFee,
+        total,
+        prepTimeMin: Number(settings.prep_time_min || 20),
+        prepTimeMax: Number(settings.prep_time_max || 35),
+      });
+    } catch (emailError) {
+      console.error("ORDER CONFIRMATION EMAIL FAILED:", emailError);
+    }
+
     return NextResponse.json({
       ok: true,
       orderId: order.id,
@@ -422,6 +664,7 @@ export async function POST(request: NextRequest) {
       deliveryFee,
       total,
       orderType,
+      confirmationEmailSent,
       message: "Siparişiniz alındı.",
     });
   } catch (error) {

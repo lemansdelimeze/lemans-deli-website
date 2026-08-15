@@ -84,6 +84,7 @@ type Quote = {
 
 type MemberCheckoutProfile = {
   full_name: string | null;
+  email: string | null;
   phone: string | null;
   default_delivery_zone_id: number | null;
   default_address: string | null;
@@ -118,6 +119,7 @@ const orderTexts = {
     delivery: "Paket Servis",
     name: "Ad Soyad",
     phone: "Telefon",
+    email: "E-posta",
     address: "Teslimat Adresi",
     note: "Sipariş Notu",
     notePlaceholder: "Örn. sos ayrı olsun",
@@ -142,6 +144,7 @@ const orderTexts = {
     delivery: "Delivery",
     name: "Full Name",
     phone: "Phone",
+    email: "Email",
     address: "Delivery Address",
     note: "Order Note",
     notePlaceholder: "e.g. sauce on the side",
@@ -166,6 +169,7 @@ const orderTexts = {
     delivery: "Доставка",
     name: "Имя и фамилия",
     phone: "Телефон",
+    email: "Эл. почта",
     address: "Адрес доставки",
     note: "Комментарий",
     notePlaceholder: "Напр. соус отдельно",
@@ -439,6 +443,7 @@ export default function MenuPage() {
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [orderType, setOrderType] = useState<OrderType>("pickup");
   const [customerName, setCustomerName] = useState("");
+  const [customerEmail, setCustomerEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [address, setAddress] = useState("");
   const [orderNote, setOrderNote] = useState("");
@@ -568,6 +573,7 @@ export default function MenuPage() {
     if (!profile) return;
 
     if (profile.full_name) setCustomerName(profile.full_name);
+    if (profile.email) setCustomerEmail(profile.email);
     if (profile.phone) setPhone(profile.phone);
     if (profile.default_address) setAddress(profile.default_address);
     if (profile.default_delivery_zone_id) {
@@ -824,6 +830,20 @@ export default function MenuPage() {
       return;
     }
 
+    const normalizedEmail = customerEmail.trim().toLowerCase();
+    const emailLooksValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail);
+
+    if (!emailLooksValid) {
+      setOrderError(
+        language === "tr"
+          ? "Sipariş onayı için geçerli bir e-posta adresi gerekli."
+          : language === "ru"
+            ? "Для подтверждения заказа укажите действующий адрес электронной почты."
+            : "A valid email address is required for your order confirmation."
+      );
+      return;
+    }
+
     if (orderType === "delivery" && !deliveryZoneId) {
       setOrderError("Teslimat bölgesi seçin.");
       return;
@@ -855,8 +875,10 @@ export default function MenuPage() {
         body: JSON.stringify({
           orderType,
           customerName,
+          email: customerEmail.trim().toLowerCase(),
           phone,
           address,
+          language,
           deliveryZoneId,
           note: orderNote,
           website,
@@ -880,6 +902,7 @@ export default function MenuPage() {
       setOrderSuccess(data.orderCode);
       setCart([]);
       setCustomerName("");
+      setCustomerEmail("");
       setPhone("");
       setAddress("");
       setDeliveryZoneId(null);
@@ -938,7 +961,7 @@ export default function MenuPage() {
             <img
               src="/logo-horizontal.png"
               alt="Leman's Deli"
-              className="h-16 w-auto max-w-[210px] object-contain object-left sm:h-20 sm:max-w-[310px]"
+              className="h-20 w-auto max-w-[260px] object-contain object-left sm:h-24 sm:max-w-[380px]"
             />
           </a>
 
@@ -1401,6 +1424,15 @@ export default function MenuPage() {
                     onChange={(event) => setPhone(event.target.value)}
                     inputMode="tel"
                     placeholder={orderTexts[language].phone}
+                    className="w-full rounded-2xl border border-black/10 bg-white px-4 py-3.5 outline-none focus:border-[#6e1f12]/50"
+                  />
+
+                  <input
+                    type="email"
+                    value={customerEmail}
+                    onChange={(event) => setCustomerEmail(event.target.value)}
+                    autoComplete="email"
+                    placeholder={orderTexts[language].email}
                     className="w-full rounded-2xl border border-black/10 bg-white px-4 py-3.5 outline-none focus:border-[#6e1f12]/50"
                   />
 

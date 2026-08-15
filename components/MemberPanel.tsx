@@ -8,6 +8,7 @@ type Language = "tr" | "en" | "ru";
 
 type MemberCheckoutProfile = {
   full_name: string | null;
+  email: string | null;
   phone: string | null;
   default_delivery_zone_id: number | null;
   default_address: string | null;
@@ -156,15 +157,16 @@ export default function MemberPanel({ language, onMemberChange }: Props) {
     const nextProfile = (profileData ?? null) as CustomerProfile | null;
     setProfile(nextProfile);
     onMemberChange?.(
-      nextProfile
-        ? {
-            full_name: nextProfile.full_name,
-            phone: nextProfile.phone,
-            default_delivery_zone_id: nextProfile.default_delivery_zone_id,
-            default_address: nextProfile.default_address,
-          }
-        : null
-    );
+  nextProfile
+    ? {
+        full_name: nextProfile.full_name,
+        email: nextProfile.email,
+        phone: nextProfile.phone,
+        default_delivery_zone_id: nextProfile.default_delivery_zone_id,
+        default_address: nextProfile.default_address,
+      }
+    : null
+);
   }
 
   useEffect(() => {
