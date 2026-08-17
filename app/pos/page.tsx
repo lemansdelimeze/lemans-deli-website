@@ -122,6 +122,7 @@ export default function PosPage() {
     useState<OnlineOrderSettings | null>(null);
   const [savingOnlineSettings, setSavingOnlineSettings] = useState(false);
   const [alertsEnabled, setAlertsEnabled] = useState(false);
+  const alertsEnabledRef = useRef(false);
   const [alarmMuted, setAlarmMuted] = useState(false);
   const knownIncomingIdsRef = useRef<Set<number>>(new Set());
   const alarmRepeatTimerRef = useRef<number | null>(null);
@@ -272,13 +273,43 @@ export default function PosPage() {
     return () => window.clearInterval(timer);
   }, [loadIncomingOrdersOnly]);
 
-  useEffect(() => {
-    void loadData();
+ useEffect(() => {
+  void loadData();
 
-    if (typeof window !== "undefined") {
-      setAlertsEnabled(localStorage.getItem("lemans-pos-alerts") === "1");
-    }
-  }, [loadData]);
+  if (typeof window !== "undefined") {
+    const saved =
+      localStorage.getItem("lemans-pos-alerts") === "1";
+
+    alertsEnabledRef.current = saved;
+    setAlertsEnabled(saved);
+  }
+}, [loadData]);
+
+useEffect(() => {
+  if (!alertsEnabled || alarmMuted) return;
+
+  const pendingOrder = incomingOrders.find(
+    (order) => (order.pos_stage || "new") === "new"
+  );
+
+  if (!pendingOrder) {
+    return;
+  }
+
+  if (newOrderNotice?.id !== pendingOrder.id) {
+    setNewOrderNotice(pendingOrder);
+    ringNewOrder();
+  }
+}, [
+  incomingOrders,
+  alertsEnabled,
+  alarmMuted,
+  newOrderNotice?.id,
+]);
+
+useEffect(() => {
+  alertsEnabledRef.current = alertsEnabled;
+}, [alertsEnabled]);
 
   useEffect(() => {
     const channel = supabase
@@ -328,7 +359,7 @@ export default function PosPage() {
 
     const timer = window.setInterval(() => {
       void syncTrendyol(false);
-    }, 60_000);
+}, 6_000);
 
     return () => window.clearInterval(timer);
   }, [trendyolAutoSync]);
@@ -357,8 +388,12 @@ export default function PosPage() {
   }, [newOrderNotice, alertsEnabled, alarmMuted]);
 
   function ringNewOrder(force = false) {
-    if ((!alertsEnabled && !force) || typeof window === "undefined") return;
-
+if (
+  (!alertsEnabledRef.current && !force) ||
+  typeof window === "undefined"
+) {
+  return;
+}
     try {
       let audio = alarmAudioRef.current;
       if (!audio) {
@@ -411,8 +446,14 @@ export default function PosPage() {
 
   async function toggleAlerts() {
     const next = !alertsEnabled;
-    setAlertsEnabled(next);
-    localStorage.setItem("lemans-pos-alerts", next ? "1" : "0");
+
+alertsEnabledRef.current = next;
+setAlertsEnabled(next);
+
+localStorage.setItem(
+  "lemans-pos-alerts",
+  next ? "1" : "0"
+);
 
     if (!next) {
       setAlarmMuted(true);
@@ -641,21 +682,50 @@ export default function PosPage() {
   }
 
   async function setIncomingStage(
-    orderIdValue: number,
-    stage: "new" | "preparing" | "ready"
-  ) {
-    const { error } = await supabase
-      .from("pos_orders")
-      .update({ pos_stage: stage })
-      .eq("id", orderIdValue);
+  orderIdValue: number,
+  stage: "new" | "preparing" | "ready"
+) {
+  const { error } = await supabase
+    .from("pos_orders")
+    .update({ pos_stage: stage })
+    .eq("id", orderIdValue);
 
-    if (error) {
-      alert(error.message);
-      return;
-    }
-
-    await loadData();
+  if (error) {
+    alert(error.message);
+    return;
   }
+
+  if (stage === "preparing" || stage === "ready") {
+    try {
+      const response = await fetch("/api/orders/status-email", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          orderId: orderIdValue,
+          stage,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok || !result.ok) {
+        console.error(
+          "Durum maili gönderilemedi:",
+          result.error
+        );
+      }
+    } catch (emailError) {
+      console.error(
+        "Durum maili gönderilemedi:",
+        emailError
+      );
+    }
+  }
+
+  await loadData();
+}
 
   const visibleItems = useMemo(() => {
     const category = categories.find((item) => item.id === activeCategoryId);
