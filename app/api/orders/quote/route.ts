@@ -5,6 +5,7 @@ import { supabaseAdmin } from "../../../../lib/supabaseAdmin";
 type QuoteItem = {
   menuItemId: number;
   quantity: number;
+  portionType?: "unit" | "half";
 };
 
 type QuoteBody = {
@@ -17,23 +18,37 @@ export async function POST(request: NextRequest) {
   try {
     const body = (await request.json()) as QuoteBody;
 
-    const quantities = new Map<number, number>();
+    const requestedLines = new Map<
+      string,
+      { menuItemId: number; quantity: number; portionType: "unit" | "half" }
+    >();
 
     for (const row of body.items ?? []) {
       const id = Number(row.menuItemId);
       const quantity = Number(row.quantity);
+      const portionType = row.portionType === "half" ? "half" : "unit";
 
       if (
         Number.isInteger(id) &&
         id > 0 &&
         Number.isInteger(quantity) &&
-        quantity > 0
+        quantity > 0 &&
+        quantity <= 20
       ) {
-        quantities.set(id, Math.min(20, quantity));
+        const key = `${id}-${portionType}`;
+        const existing = requestedLines.get(key);
+
+        requestedLines.set(key, {
+          menuItemId: id,
+          portionType,
+          quantity: Math.min(20, (existing?.quantity ?? 0) + quantity),
+        });
       }
     }
 
-    const ids = Array.from(quantities.keys());
+    const ids = Array.from(
+      new Set(Array.from(requestedLines.values()).map((line) => line.menuItemId))
+    );
 
     if (!ids.length) {
       return NextResponse.json(
@@ -44,7 +59,7 @@ export async function POST(request: NextRequest) {
 
     const { data: products, error: productError } = await supabaseAdmin
       .from("menu_items")
-      .select("id,price,active")
+      .select("id,price,active,category,category_id")
       .in("id", ids)
       .eq("active", true);
 
@@ -60,10 +75,77 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const subtotal = (products ?? []).reduce((sum, product) => {
-      const quantity = quantities.get(Number(product.id)) ?? 0;
-      return sum + Number(product.price ?? 0) * quantity;
-    }, 0);
+    const categoryIds = Array.from(
+      new Set(
+        (products ?? [])
+          .map((product) => Number(product.category_id))
+          .filter((id) => Number.isInteger(id) && id > 0)
+      )
+    );
+
+    const categorySlugById = new Map<number, string>();
+
+    if (categoryIds.length > 0) {
+      const { data: categoryRows, error: categoryError } = await supabaseAdmin
+        .from("categories")
+        .select("id,slug")
+        .in("id", categoryIds);
+
+      if (categoryError) throw categoryError;
+
+      for (const category of categoryRows ?? []) {
+        categorySlugById.set(Number(category.id), String(category.slug));
+      }
+    }
+
+    const productById = new Map(
+      (products ?? []).map((product) => [Number(product.id), product])
+    );
+
+    let subtotal = 0;
+
+    for (const requestedLine of requestedLines.values()) {
+      const product = productById.get(requestedLine.menuItemId);
+
+      if (!product) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: "Sepetteki ürünlerden biri artık satışta değil.",
+          },
+          { status: 409 }
+        );
+      }
+
+      const basePrice = Number(product.price ?? 0);
+
+      if (!Number.isFinite(basePrice) || basePrice <= 0) {
+        return NextResponse.json(
+          { ok: false, error: "Sepette geçersiz fiyatlı ürün var." },
+          { status: 409 }
+        );
+      }
+
+      const categorySlug =
+        (product.category ? String(product.category) : "") ||
+        categorySlugById.get(Number(product.category_id)) ||
+        "";
+
+      const halfAllowed =
+        categorySlug === "meze" || categorySlug === "zeytinyagli";
+
+      if (requestedLine.portionType === "half" && !halfAllowed) {
+        return NextResponse.json(
+          { ok: false, error: "Bu ürün yarım porsiyon satılamaz." },
+          { status: 400 }
+        );
+      }
+
+      const unitPrice =
+        basePrice * (requestedLine.portionType === "half" ? 0.5 : 1);
+
+      subtotal += unitPrice * requestedLine.quantity;
+    }
 
     let deliveryZone: {
       id: number;

@@ -58,9 +58,13 @@ type GroupedCategory = {
   items: MenuItem[];
 };
 
+type CartPortionType = "unit" | "half";
+
 type CartItem = {
   item: MenuItem;
   quantity: number;
+  portionType: CartPortionType;
+  rowKey: string;
 };
 
 type OrderType = "pickup" | "delivery";
@@ -463,6 +467,7 @@ export default function MenuPage() {
   const [quote, setQuote] = useState<Quote | null>(null);
   const [quoteLoading, setQuoteLoading] = useState(false);
   const [memberVersion, setMemberVersion] = useState(0);
+  const [memberLoggedIn, setMemberLoggedIn] = useState(false);
 
   const loadOrderSettings = useCallback(async () => {
     try {
@@ -539,6 +544,7 @@ export default function MenuPage() {
           items: cart.map((row) => ({
             menuItemId: row.item.id,
             quantity: row.quantity,
+            portionType: row.portionType,
           })),
         }),
       });
@@ -569,6 +575,7 @@ export default function MenuPage() {
 
   const handleMemberChange = useCallback((profile: MemberCheckoutProfile | null) => {
     setMemberVersion((current) => current + 1);
+    setMemberLoggedIn(Boolean(profile));
 
     if (!profile) return;
 
@@ -757,12 +764,41 @@ export default function MenuPage() {
   }
 
   const cartCount = cart.reduce((sum, row) => sum + row.quantity, 0);
+
+  function cartUnitPrice(row: CartItem) {
+    const base = Number(row.item.price || 0);
+    return row.portionType === "half" ? base * 0.5 : base;
+  }
+
+  function halfPortionLabel(portion: string | null) {
+    if (!portion) return language === "tr"
+      ? "Yarım porsiyon"
+      : language === "ru"
+        ? "Половина порции"
+        : "Half portion";
+
+    const match = portion.match(/^\s*(\d+(?:[.,]\d+)?)\s*(g|gr|gram|ml)\s*$/i);
+    if (match) {
+      const amount = Number(match[1].replace(",", ".")) / 2;
+      return `${Number.isInteger(amount) ? amount : amount.toLocaleString("tr-TR")} ${match[2]}`;
+    }
+
+    return language === "tr"
+      ? `Yarım · ${portion}`
+      : language === "ru"
+        ? `Половина · ${portion}`
+        : `Half · ${portion}`;
+  }
+
   const cartTotal = cart.reduce(
-    (sum, row) => sum + Number(row.item.price || 0) * row.quantity,
+    (sum, row) => sum + cartUnitPrice(row) * row.quantity,
     0
   );
 
-  function addToCart(item: MenuItem) {
+  function addToCart(
+    item: MenuItem,
+    portionType: CartPortionType = "unit"
+  ) {
     if (!acceptingOrders) {
       setOrderError(
         orderAvailabilityReason ||
@@ -777,24 +813,28 @@ export default function MenuPage() {
 
     if (!item.price || item.price <= 0) return;
 
+    const rowKey = `${item.id}-${portionType}`;
+
     setCart((current) => {
-      const existing = current.find((row) => row.item.id === item.id);
+      const existing = current.find((row) => row.rowKey === rowKey);
+
       if (existing) {
         return current.map((row) =>
-          row.item.id === item.id
+          row.rowKey === rowKey
             ? { ...row, quantity: Math.min(20, row.quantity + 1) }
             : row
         );
       }
-      return [...current, { item, quantity: 1 }];
+
+      return [...current, { item, quantity: 1, portionType, rowKey }];
     });
   }
 
-  function changeCartQuantity(itemId: number, amount: number) {
+  function changeCartQuantity(rowKey: string, amount: number) {
     setCart((current) =>
       current
         .map((row) =>
-          row.item.id === itemId
+          row.rowKey === rowKey
             ? { ...row, quantity: row.quantity + amount }
             : row
         )
@@ -830,7 +870,13 @@ export default function MenuPage() {
       return;
     }
 
-    const normalizedEmail = customerEmail.trim().toLowerCase();
+    const { data: emailSessionData } = await supabase.auth.getSession();
+    const loggedInEmail =
+      emailSessionData.session?.user.email?.trim().toLowerCase() || "";
+
+    const normalizedEmail =
+      loggedInEmail || customerEmail.trim().toLowerCase();
+
     const emailLooksValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail);
 
     if (!emailLooksValid) {
@@ -875,7 +921,7 @@ export default function MenuPage() {
         body: JSON.stringify({
           orderType,
           customerName,
-          email: customerEmail.trim().toLowerCase(),
+          email: normalizedEmail,
           phone,
           address,
           language,
@@ -885,6 +931,7 @@ export default function MenuPage() {
           items: cart.map((row) => ({
             menuItemId: row.item.id,
             quantity: row.quantity,
+            portionType: row.portionType,
           })),
         }),
       });
@@ -1144,6 +1191,7 @@ export default function MenuPage() {
 
                     <CategoryProducts
                       items={selectedGroup.items}
+                      categorySlug={selectedGroup.category.slug}
                       language={language}
                       openProductId={openProductId}
                       setOpenProductId={setOpenProductId}
@@ -1228,6 +1276,7 @@ export default function MenuPage() {
 
                     <CategoryProducts
                       items={selectedGroup.items}
+                      categorySlug={selectedGroup.category.slug}
                       language={language}
                       openProductId={openProductId}
                       setOpenProductId={setOpenProductId}
@@ -1292,7 +1341,7 @@ export default function MenuPage() {
                     ) : (
                       cart.map((row) => (
                         <div
-                          key={row.item.id}
+                          key={row.rowKey}
                           className="flex items-center gap-3 rounded-2xl border border-[#6e1f12]/10 bg-white p-3"
                         >
                           <div className="min-w-0 flex-1">
@@ -1300,16 +1349,18 @@ export default function MenuPage() {
                               {getProductName(row.item, language)}
                             </p>
                             <p className="mt-1 text-xs opacity-50">
-                              {row.item.portion || ""}
-                              {row.item.portion ? " · " : ""}
-                              {Number(row.item.price || 0).toLocaleString("tr-TR")} ₺
+                              {row.portionType === "half"
+                                ? halfPortionLabel(row.item.portion)
+                                : row.item.portion || ""}
+                              {(row.item.portion || row.portionType === "half") ? " · " : ""}
+                              {cartUnitPrice(row).toLocaleString("tr-TR")} ₺
                             </p>
                           </div>
 
                           <div className="flex items-center rounded-full border border-black/10 bg-[#f4efe5]">
                             <button
                               type="button"
-                              onClick={() => changeCartQuantity(row.item.id, -1)}
+                              onClick={() => changeCartQuantity(row.rowKey, -1)}
                               className="px-3 py-2 font-bold"
                             >
                               −
@@ -1319,7 +1370,7 @@ export default function MenuPage() {
                             </span>
                             <button
                               type="button"
-                              onClick={() => changeCartQuantity(row.item.id, 1)}
+                              onClick={() => changeCartQuantity(row.rowKey, 1)}
                               className="px-3 py-2 font-bold"
                             >
                               +
@@ -1427,14 +1478,24 @@ export default function MenuPage() {
                     className="w-full rounded-2xl border border-black/10 bg-white px-4 py-3.5 outline-none focus:border-[#6e1f12]/50"
                   />
 
-                  <input
-                    type="email"
-                    value={customerEmail}
-                    onChange={(event) => setCustomerEmail(event.target.value)}
-                    autoComplete="email"
-                    placeholder={orderTexts[language].email}
-                    className="w-full rounded-2xl border border-black/10 bg-white px-4 py-3.5 outline-none focus:border-[#6e1f12]/50"
-                  />
+                  {memberLoggedIn ? (
+                    <div className="rounded-2xl border border-green-200 bg-green-50 px-4 py-3.5 text-sm text-green-800">
+                      {language === "tr"
+                        ? "Sipariş onayı üyelik e-posta adresinize gönderilecek."
+                        : language === "ru"
+                          ? "Подтверждение заказа будет отправлено на адрес электронной почты вашей учетной записи."
+                          : "Your order confirmation will be sent to your account email address."}
+                    </div>
+                  ) : (
+                    <input
+                      type="email"
+                      value={customerEmail}
+                      onChange={(event) => setCustomerEmail(event.target.value)}
+                      autoComplete="email"
+                      placeholder={orderTexts[language].email}
+                      className="w-full rounded-2xl border border-black/10 bg-white px-4 py-3.5 outline-none focus:border-[#6e1f12]/50"
+                    />
+                  )}
 
                   {orderType === "delivery" && (
                     <textarea
@@ -1591,6 +1652,7 @@ export default function MenuPage() {
 
 function CategoryProducts({
   items,
+  categorySlug,
   language,
   openProductId,
   setOpenProductId,
@@ -1599,10 +1661,11 @@ function CategoryProducts({
   orderingReason,
 }: {
   items: MenuItem[];
+  categorySlug: string;
   language: Language;
   openProductId: number | null;
   setOpenProductId: (id: number | null) => void;
-  onAddToCart: (item: MenuItem) => void;
+  onAddToCart: (item: MenuItem, portionType?: CartPortionType) => void;
   orderingAvailable: boolean;
   orderingReason: string | null;
 }) {
@@ -1682,22 +1745,44 @@ function CategoryProducts({
 
 
             {item.price !== null && item.price > 0 && (
-              <div className="px-4 pb-4 md:px-6">
+              <div className="flex flex-col gap-2 px-4 pb-4 sm:flex-row md:px-6">
                 <button
                   type="button"
                   disabled={!orderingAvailable}
                   title={!orderingAvailable ? orderingReason || "" : ""}
-                  onClick={() => onAddToCart(item)}
+                  onClick={() => onAddToCart(item, "unit")}
                   className="w-full rounded-xl border border-[#6e1f12]/15 bg-[#6e1f12]/5 px-4 py-2.5 text-sm font-bold text-[#6e1f12] transition hover:bg-[#6e1f12] hover:text-white disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-[#6e1f12]/5 disabled:hover:text-[#6e1f12] md:w-auto"
                 >
                   {orderingAvailable
-                    ? `+ ${orderTexts[language].add}`
+                    ? categorySlug === "meze" || categorySlug === "zeytinyagli"
+                      ? language === "tr"
+                        ? `+ Tam Porsiyon · ${Number(item.price).toLocaleString("tr-TR")} ₺`
+                        : language === "ru"
+                          ? `+ Полная порция · ${Number(item.price).toLocaleString("tr-TR")} ₺`
+                          : `+ Full Portion · ${Number(item.price).toLocaleString("tr-TR")} ₺`
+                      : `+ ${orderTexts[language].add}`
                     : language === "tr"
                       ? "Sipariş Kapalı"
                       : language === "ru"
                         ? "Заказы закрыты"
                         : "Ordering Closed"}
                 </button>
+
+                {(categorySlug === "meze" || categorySlug === "zeytinyagli") && (
+                  <button
+                    type="button"
+                    disabled={!orderingAvailable}
+                    title={!orderingAvailable ? orderingReason || "" : ""}
+                    onClick={() => onAddToCart(item, "half")}
+                    className="w-full rounded-xl border border-[#6e1f12]/20 bg-white px-4 py-2.5 text-sm font-bold text-[#6e1f12] transition hover:border-[#6e1f12] hover:bg-[#6e1f12]/10 disabled:cursor-not-allowed disabled:opacity-45 md:w-auto"
+                  >
+                    {language === "tr"
+                      ? `+ Yarım Porsiyon · ${(Number(item.price) / 2).toLocaleString("tr-TR")} ₺`
+                      : language === "ru"
+                        ? `+ Половина порции · ${(Number(item.price) / 2).toLocaleString("tr-TR")} ₺`
+                        : `+ Half Portion · ${(Number(item.price) / 2).toLocaleString("tr-TR")} ₺`}
+                  </button>
+                )}
               </div>
             )}
 

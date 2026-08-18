@@ -23,6 +23,8 @@ type Category =
 
 type Dietary = "none" | "vegan" | "vegetarian";
 
+type StaffRole = "cashier" | "kitchen" | "admin" | "owner";
+
 type MenuItem = {
   id: number;
 
@@ -282,6 +284,7 @@ export default function TvMenuAdminPage() {
   const [loading, setLoading] = useState(true);
   const [sessionLoading, setSessionLoading] = useState(true);
   const [loggedIn, setLoggedIn] = useState(false);
+  const [staffRole, setStaffRole] = useState<StaffRole | null>(null);
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -369,35 +372,71 @@ export default function TvMenuAdminPage() {
   }
 
   useEffect(() => {
+    let active = true;
+
+    async function authorizeSession(
+      session: Awaited<ReturnType<typeof supabase.auth.getSession>>["data"]["session"]
+    ) {
+      if (!active) return;
+
+      if (!session) {
+        setLoggedIn(false);
+        setStaffRole(null);
+        setItems([]);
+        setDrafts({});
+        return;
+      }
+
+      const { data: staff, error: staffError } = await supabase
+        .from("staff_profiles")
+        .select("role,active")
+        .eq("user_id", session.user.id)
+        .maybeSingle();
+
+      const role = staff?.role as StaffRole | undefined;
+      const allowed =
+        !staffError &&
+        Boolean(staff?.active) &&
+        (role === "admin" || role === "owner");
+
+      if (!allowed) {
+        setLoggedIn(false);
+        setStaffRole(null);
+        setItems([]);
+        setDrafts({});
+        await supabase.auth.signOut();
+        return;
+      }
+
+      setStaffRole(role ?? null);
+      setLoggedIn(true);
+      await loadItems();
+    }
+
     async function checkSession() {
       const {
         data: { session },
       } = await supabase.auth.getSession();
 
-      setLoggedIn(Boolean(session));
-      setSessionLoading(false);
+      await authorizeSession(session);
 
-      if (session) {
-        await loadItems();
+      if (active) {
+        setSessionLoading(false);
       }
     }
 
-    checkSession();
+    void checkSession();
 
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
-      setLoggedIn(Boolean(session));
-
-      if (session) {
-        loadItems();
-      } else {
-        setItems([]);
-        setDrafts({});
-      }
+      void authorizeSession(session);
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      active = false;
+      subscription.unsubscribe();
+    };
   }, []);
 
   const groupedItems = useMemo(() => {
@@ -862,6 +901,7 @@ portion_ru: newItem.portion_ru.trim() || null,
 
             <p className="mt-1 text-sm opacity-50">
               Günlük kullanım için sade görünüm
+              {staffRole ? ` · ${staffRole.toUpperCase()}` : ""}
             </p>
           </div>
 

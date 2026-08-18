@@ -5,6 +5,7 @@ import { supabaseAdmin } from "../../../../lib/supabaseAdmin";
 type RequestedItem = {
   menuItemId: number;
   quantity: number;
+  portionType?: "unit" | "half";
 };
 
 type CreateOrderBody = {
@@ -172,6 +173,8 @@ async function sendOrderConfirmationEmail(args: {
   lines: Array<{
     product_name: string;
     quantity: number;
+    portion_type: "unit" | "half";
+    portion_label: string | null;
     unit_price: number;
     line_total: number;
   }>;
@@ -248,7 +251,9 @@ async function sendOrderConfirmationEmail(args: {
       (line) => `
         <tr>
           <td style="padding:10px 0;border-bottom:1px solid #ead8ce;color:#2a1711;">
-            ${escapeHtml(line.product_name)} × ${line.quantity}
+            ${escapeHtml(line.product_name)}
+            ${line.portion_type === "half" ? ` · ${escapeHtml(line.portion_label || "Yarım porsiyon")}` : ""}
+            × ${line.quantity}
           </td>
           <td style="padding:10px 0;border-bottom:1px solid #ead8ce;text-align:right;color:#2a1711;font-weight:700;">
             ${money(line.line_total)} ₺
@@ -335,6 +340,23 @@ async function sendOrderConfirmationEmail(args: {
   }
 
   return true;
+}
+
+function halfPortionLabel(portion: string | null) {
+  if (!portion) return "Yarım porsiyon";
+
+  const match = portion.match(/^\s*(\d+(?:[.,]\d+)?)\s*(g|gr|gram|ml)\s*$/i);
+
+  if (match) {
+    const amount = Number(match[1].replace(",", ".")) / 2;
+    const amountText = Number.isInteger(amount)
+      ? String(amount)
+      : amount.toLocaleString("tr-TR");
+
+    return `${amountText} ${match[2]}`;
+  }
+
+  return `Yarım · ${portion}`;
 }
 
 function makeOrderCode() {
@@ -453,19 +475,32 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const quantities = new Map<number, number>();
+    const requestedLines = new Map<
+      string,
+      { menuItemId: number; quantity: number; portionType: "unit" | "half" }
+    >();
 
     for (const row of requested) {
       const id = Number(row?.menuItemId);
       const quantity = Number(row?.quantity);
+      const portionType = row?.portionType === "half" ? "half" : "unit";
 
       if (!Number.isInteger(id) || id <= 0) continue;
       if (!Number.isInteger(quantity) || quantity < 1 || quantity > 20) continue;
 
-      quantities.set(id, Math.min(20, (quantities.get(id) ?? 0) + quantity));
+      const key = `${id}-${portionType}`;
+      const existing = requestedLines.get(key);
+
+      requestedLines.set(key, {
+        menuItemId: id,
+        portionType,
+        quantity: Math.min(20, (existing?.quantity ?? 0) + quantity),
+      });
     }
 
-    const ids = Array.from(quantities.keys());
+    const ids = Array.from(
+      new Set(Array.from(requestedLines.values()).map((line) => line.menuItemId))
+    );
 
     if (!ids.length) {
       return NextResponse.json(
@@ -476,7 +511,7 @@ export async function POST(request: NextRequest) {
 
     const { data: products, error: productError } = await supabaseAdmin
       .from("menu_items")
-      .select("id,name,name_tr,price,portion,active")
+      .select("id,name,name_tr,price,portion,category,category_id,active")
       .in("id", ids)
       .eq("active", true);
 
@@ -492,25 +527,78 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const lines = (products ?? []).map((product) => {
-      const quantity = quantities.get(Number(product.id)) ?? 1;
-      const unitPrice = Number(product.price ?? 0);
+    const categoryIds = Array.from(
+      new Set(
+        (products ?? [])
+          .map((product) => Number(product.category_id))
+          .filter((id) => Number.isInteger(id) && id > 0)
+      )
+    );
 
-      if (!Number.isFinite(unitPrice) || unitPrice <= 0) {
+    const categorySlugById = new Map<number, string>();
+
+    if (categoryIds.length > 0) {
+      const { data: categoryRows, error: categoryError } = await supabaseAdmin
+        .from("categories")
+        .select("id,slug")
+        .in("id", categoryIds);
+
+      if (categoryError) throw categoryError;
+
+      for (const category of categoryRows ?? []) {
+        categorySlugById.set(Number(category.id), String(category.slug));
+      }
+    }
+
+    const productById = new Map(
+      (products ?? []).map((product) => [Number(product.id), product])
+    );
+
+    const lines = Array.from(requestedLines.values()).map((requestedLine) => {
+      const product = productById.get(requestedLine.menuItemId);
+
+      if (!product) {
+        throw new Error("Sepetteki ürünlerden biri artık satışta değil.");
+      }
+
+      const basePrice = Number(product.price ?? 0);
+
+      if (!Number.isFinite(basePrice) || basePrice <= 0) {
         throw new Error(
           `${product.name_tr || product.name || "Ürün"} için geçerli fiyat yok.`
         );
       }
 
+      const categorySlug =
+        (product.category ? String(product.category) : "") ||
+        categorySlugById.get(Number(product.category_id)) ||
+        "";
+
+      const halfAllowed =
+        categorySlug === "meze" || categorySlug === "zeytinyagli";
+
+      if (requestedLine.portionType === "half" && !halfAllowed) {
+        throw new Error(
+          `${product.name_tr || product.name || "Ürün"} yarım porsiyon satılamaz.`
+        );
+      }
+
+      const portionType = requestedLine.portionType;
+      const unitPrice = basePrice * (portionType === "half" ? 0.5 : 1);
+      const portionLabel =
+        portionType === "half"
+          ? halfPortionLabel(product.portion || null)
+          : product.portion || null;
+
       return {
         menu_item_id: Number(product.id),
         product_name: product.name_tr || product.name || `Ürün ${product.id}`,
-        quantity,
-        portion_type: "unit",
-        portion_label: product.portion || null,
+        quantity: requestedLine.quantity,
+        portion_type: portionType,
+        portion_label: portionLabel,
         weight_grams: null,
         unit_price: unitPrice,
-        line_total: unitPrice * quantity,
+        line_total: unitPrice * requestedLine.quantity,
       };
     });
 

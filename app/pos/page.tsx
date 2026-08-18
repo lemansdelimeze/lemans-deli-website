@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../../lib/supabase";
 import PaymentModal from "../../components/pos/PaymentModal";
 import Receipt from "../../components/pos/Receipt";
@@ -28,6 +28,8 @@ import {
   receiptNo,
 } from "../../components/pos/utils";
 
+
+type StaffRole = "cashier" | "kitchen" | "admin" | "owner";
 
 type IncomingOrder = {
   id: number;
@@ -108,6 +110,13 @@ function mapsHref(address: string | null) {
 }
 
 export default function PosPage() {
+  const [sessionLoading, setSessionLoading] = useState(true);
+  const [loggedIn, setLoggedIn] = useState(false);
+  const [staffRole, setStaffRole] = useState<StaffRole | null>(null);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [loginError, setLoginError] = useState<string | null>(null);
+
   const [categories, setCategories] = useState<Category[]>([]);
   const [items, setItems] = useState<MenuItem[]>([]);
   const [tables, setTables] = useState<PosTable[]>([]);
@@ -137,6 +146,11 @@ export default function PosPage() {
   const [orderNote, setOrderNote] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [cancelTarget, setCancelTarget] = useState<{
+    id: number;
+    source: string | null;
+  } | null>(null);
+  const [cancelReason, setCancelReason] = useState("");
   const [weightItem, setWeightItem] = useState<MenuItem | null>(null);
   const [weightInput, setWeightInput] = useState("");
   const [paymentOpen, setPaymentOpen] = useState(false);
@@ -157,6 +171,8 @@ export default function PosPage() {
   const [printedDiscountLabel, setPrintedDiscountLabel] = useState("");
   const [printedTotal, setPrintedTotal] = useState(0);
   const [printedOrderLabel, setPrintedOrderLabel] = useState("");
+
+  const canCancelOrder = staffRole === "admin" || staffRole === "owner";
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -264,6 +280,8 @@ export default function PosPage() {
   }, [alertsEnabled]);
 
   useEffect(() => {
+    if (!loggedIn) return;
+
     const timer = window.setInterval(() => {
       if (document.visibilityState === "visible") {
         void loadIncomingOrdersOnly();
@@ -271,19 +289,76 @@ export default function PosPage() {
     }, 8000);
 
     return () => window.clearInterval(timer);
-  }, [loadIncomingOrdersOnly]);
+  }, [loadIncomingOrdersOnly, loggedIn]);
 
- useEffect(() => {
-  void loadData();
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("lemans-pos-alerts") === "1";
+      alertsEnabledRef.current = saved;
+      setAlertsEnabled(saved);
+    }
+  }, []);
 
-  if (typeof window !== "undefined") {
-    const saved =
-      localStorage.getItem("lemans-pos-alerts") === "1";
+  useEffect(() => {
+    let active = true;
 
-    alertsEnabledRef.current = saved;
-    setAlertsEnabled(saved);
-  }
-}, [loadData]);
+    async function authorizeSession(
+      session: Awaited<ReturnType<typeof supabase.auth.getSession>>["data"]["session"]
+    ) {
+      if (!active) return;
+
+      if (!session) {
+        setLoggedIn(false);
+        setStaffRole(null);
+        setSessionLoading(false);
+        return;
+      }
+
+      const { data: staff, error: staffError } = await supabase
+        .from("staff_profiles")
+        .select("role,active")
+        .eq("user_id", session.user.id)
+        .maybeSingle();
+
+      const role = staff?.role as StaffRole | undefined;
+      const allowed =
+        !staffError &&
+        Boolean(staff?.active) &&
+        (role === "cashier" ||
+          role === "kitchen" ||
+          role === "admin" ||
+          role === "owner");
+
+      if (!allowed) {
+        setLoggedIn(false);
+        setStaffRole(null);
+        setSessionLoading(false);
+        await supabase.auth.signOut();
+        return;
+      }
+
+      setStaffRole(role ?? null);
+      setLoggedIn(true);
+      setSessionLoading(false);
+      await loadData();
+    }
+
+    async function checkSession() {
+      const { data: { session } } = await supabase.auth.getSession();
+      await authorizeSession(session);
+    }
+
+    void checkSession();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      void authorizeSession(session);
+    });
+
+    return () => {
+      active = false;
+      subscription.unsubscribe();
+    };
+  }, [loadData]);
 
 useEffect(() => {
   if (!alertsEnabled || alarmMuted) return;
@@ -312,6 +387,8 @@ useEffect(() => {
 }, [alertsEnabled]);
 
   useEffect(() => {
+    if (!loggedIn) return;
+
     const channel = supabase
       .channel("pos-live-orders")
       .on(
@@ -352,17 +429,17 @@ useEffect(() => {
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [loadData]);
+  }, [loadData, loggedIn]);
 
   useEffect(() => {
-    if (!trendyolAutoSync) return;
+    if (!loggedIn || !trendyolAutoSync) return;
 
     const timer = window.setInterval(() => {
       void syncTrendyol(false);
 }, 6_000);
 
     return () => window.clearInterval(timer);
-  }, [trendyolAutoSync]);
+  }, [trendyolAutoSync, loggedIn]);
 
   useEffect(() => {
     if (alarmRepeatTimerRef.current) {
@@ -894,6 +971,128 @@ await loadData();
     } finally { setSaving(false); }
   }
 
+  function requestCancelOrder(
+    targetOrderId?: number,
+    source?: string | null
+  ) {
+    const id = targetOrderId ?? orderId;
+
+    if (!canCancelOrder) {
+      alert("Adisyon iptali yalnızca admin veya owner tarafından yapılabilir.");
+      return;
+    }
+
+    if (!id) {
+      alert("İptal edilecek kayıtlı bir adisyon yok.");
+      return;
+    }
+
+    if (source === "trendyol" || source === "yemeksepeti") {
+      alert(
+        "Harici kanal siparişleri buradan iptal edilemez. Önce ilgili platformda iptal işlemini tamamlayın."
+      );
+      return;
+    }
+
+    setCancelReason("");
+    setCancelTarget({
+      id,
+      source: source ?? null,
+    });
+  }
+
+  async function confirmCancelOrder() {
+    if (!cancelTarget) return;
+
+    const reason = cancelReason.trim();
+
+    if (!reason) {
+      alert("İptal nedeni zorunludur.");
+      return;
+    }
+
+    setSaving(true);
+
+    try {
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError || !user) {
+        throw new Error("Personel oturumu bulunamadı.");
+      }
+
+      const { data: currentOrder, error: orderError } = await supabase
+        .from("pos_orders")
+        .select("id,status,source")
+        .eq("id", cancelTarget.id)
+        .single();
+
+      if (orderError) throw orderError;
+
+      if (currentOrder.status !== "open") {
+        throw new Error(
+          "Bu adisyon artık açık değil. Kapanmış adisyonlar bu ekrandan iptal edilemez."
+        );
+      }
+
+      if (
+        currentOrder.source === "trendyol" ||
+        currentOrder.source === "yemeksepeti"
+      ) {
+        throw new Error(
+          "Harici kanal siparişleri önce ilgili platform üzerinden iptal edilmelidir."
+        );
+      }
+
+      const { error } = await supabase
+        .from("pos_orders")
+        .update({
+          status: "cancelled",
+          pos_stage: "cancelled",
+          cancelled_at: new Date().toISOString(),
+          cancelled_by: user.id,
+          cancel_reason: reason,
+        })
+        .eq("id", cancelTarget.id)
+        .eq("status", "open");
+
+      if (error) throw error;
+
+      if (newOrderNotice?.id === cancelTarget.id) {
+        setNewOrderNotice(null);
+        setAlarmMuted(true);
+      }
+
+      if (orderId === cancelTarget.id) {
+        setCart([]);
+        setOrderId(null);
+        setTableId(null);
+        setCustomerName("");
+        setOrderNote("");
+        setDiscountType("none");
+        setDiscountValue("");
+      }
+
+      setChannelMessage(
+        `Adisyon #${cancelTarget.id} iptal edildi · ${reason}`
+      );
+      setCancelTarget(null);
+      setCancelReason("");
+
+      await loadData();
+    } catch (error) {
+      alert(
+        error instanceof Error
+          ? error.message
+          : "Adisyon iptal edilemedi."
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
   function preparePrint(label: string, paymentLabel: string, nextReceipt: string) {
     setPrintedReceipt(nextReceipt); setPrintedPayment(paymentLabel); setPrintedCart([...cart]);
     setPrintedSubtotal(subtotal); setPrintedDiscount(discountAmount); setPrintedDiscountLabel(discountLabel);
@@ -977,6 +1176,101 @@ await loadData();
     } finally { setSaving(false); }
   }
 
+  async function handleLogin(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setLoginError(null);
+    setSessionLoading(true);
+
+    const { error } = await supabase.auth.signInWithPassword({
+      email: email.trim(),
+      password,
+    });
+
+    if (error) {
+      setSessionLoading(false);
+      setLoginError("E-posta veya şifre hatalı.");
+    }
+  }
+
+  async function handleLogout() {
+    await supabase.auth.signOut();
+    setCart([]);
+    setOrderId(null);
+    setTableId(null);
+    setIncomingOrders([]);
+    setOpenOrders([]);
+  }
+
+  if (sessionLoading) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-[#f4efe5] px-4 text-[#292821]">
+        <div className="rounded-3xl border border-[#6e1f12]/15 bg-white px-8 py-7 text-center shadow-sm">
+          <p className="text-lg font-bold text-[#6e1f12]" style={{ fontFamily: BRAND_FONT }}>
+            Leman&apos;s Deli POS
+          </p>
+          <p className="mt-2 text-sm opacity-60">Yetki kontrol ediliyor...</p>
+        </div>
+      </main>
+    );
+  }
+
+  if (!loggedIn) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-[#f4efe5] px-4 text-[#292821]">
+        <form
+          onSubmit={handleLogin}
+          className="w-full max-w-md rounded-3xl border border-[#6e1f12]/15 bg-white p-7 shadow-sm"
+        >
+          <h1 className="text-3xl font-bold text-[#6e1f12]" style={{ fontFamily: BRAND_FONT }}>
+            Leman&apos;s Deli POS
+          </h1>
+          <p className="mt-2 text-sm opacity-60">Personel hesabınızla giriş yapın.</p>
+
+          <label className="mt-6 block text-sm font-semibold">
+            E-posta
+            <input
+              type="email"
+              autoComplete="email"
+              required
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              className="mt-1.5 w-full rounded-xl border px-3 py-3 outline-none focus:border-[#6e1f12]"
+            />
+          </label>
+
+          <label className="mt-4 block text-sm font-semibold">
+            Şifre
+            <input
+              type="password"
+              autoComplete="current-password"
+              required
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              className="mt-1.5 w-full rounded-xl border px-3 py-3 outline-none focus:border-[#6e1f12]"
+            />
+          </label>
+
+          {loginError && (
+            <p className="mt-4 rounded-xl bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">
+              {loginError}
+            </p>
+          )}
+
+          <button
+            type="submit"
+            className="mt-5 w-full rounded-xl bg-[#6e1f12] px-4 py-3 font-bold text-white"
+          >
+            POS&apos;a Giriş Yap
+          </button>
+
+          <p className="mt-4 text-xs leading-5 opacity-50">
+            Yalnızca aktif cashier, kitchen, admin veya owner personel hesapları POS&apos;a erişebilir.
+          </p>
+        </form>
+      </main>
+    );
+  }
+
   return (
     <>
       <style jsx global>{`
@@ -1004,11 +1298,23 @@ await loadData();
               <a href="/pos/report" className="rounded-xl border bg-white px-4 py-2 text-sm font-semibold">Raporlar</a>
               <a href="/pos/stock" className="rounded-xl border bg-white px-4 py-2 text-sm font-semibold">Stok</a>
               <a href="/pos/stock/link" className="rounded-xl border bg-white px-4 py-2 text-sm font-semibold">Stok Bağlantıları</a>
-              <a href="/tv-menu/admin" className="rounded-xl border bg-white px-4 py-2 text-sm">Menü Yönetimi</a>
+              {(staffRole === "admin" || staffRole === "owner") && (
+                <a href="/tv-menu/admin" className="rounded-xl border bg-white px-4 py-2 text-sm">Menü Yönetimi</a>
+              )}
+              <span className="rounded-xl border border-[#6e1f12]/15 bg-[#fffdf8] px-3 py-2 text-xs font-bold uppercase text-[#6e1f12]">
+                {staffRole}
+              </span>
+              <button
+                type="button"
+                onClick={() => void handleLogout()}
+                className="rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm font-semibold text-red-700"
+              >
+                Çıkış
+              </button>
             </div>
           </header>
 
-          {onlineSettings && (
+          {onlineSettings && (staffRole === "admin" || staffRole === "owner") && (
             <section className="mb-5 rounded-3xl border-2 border-[#6e1f12]/15 bg-white p-4">
               <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
                 <div>
@@ -1236,6 +1542,7 @@ await loadData();
             </section>
           )}
 
+          {(staffRole === "admin" || staffRole === "owner") && (
           <section className="mb-5 rounded-3xl border border-[#6e1f12]/10 bg-white p-4">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
               <div>
@@ -1302,6 +1609,8 @@ await loadData();
               </p>
             )}
           </section>
+
+          )}
 
           {incomingOrders.length > 0 && (
             <section className="mb-5 rounded-3xl border-2 border-[#6e1f12]/20 bg-white p-4">
@@ -1412,6 +1721,16 @@ await loadData();
                         >
                           ✓ Kabul Et
                         </button>
+                        {canCancelOrder && order.source === "web" && (
+                          <button
+                            type="button"
+                            onClick={() => requestCancelOrder(order.id, order.source)}
+                            disabled={saving}
+                            className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold text-red-800 disabled:opacity-40"
+                          >
+                            İptal Et
+                          </button>
+                        )}
                       </div>
 
                       <div className="mt-3 grid grid-cols-3 gap-2">
@@ -1544,6 +1863,16 @@ await loadData();
                 <button type="button" onClick={printCurrentOrder} disabled={!cart.length} className="rounded-xl border px-4 py-4 font-bold disabled:opacity-40">Adisyon Yazdır</button>
                 <button type="button" onClick={() => void saveOpen()} disabled={saving || !cart.length} className="rounded-xl border border-[#6e1f12]/20 px-4 py-4 font-bold text-[#6e1f12] disabled:opacity-40">{orderType === "Masa" ? "Masaya Kaydet" : "Beklemeye Al"}</button>
               </div>
+              {canCancelOrder && orderId && (
+                <button
+                  type="button"
+                  onClick={() => requestCancelOrder()}
+                  disabled={saving}
+                  className="mt-3 w-full rounded-xl border-2 border-red-300 bg-red-50 px-4 py-3 font-bold text-red-800 disabled:opacity-40"
+                >
+                  Adisyonu İptal Et
+                </button>
+              )}
               <button type="button" onClick={() => { if (!cart.length) return; setPaymentOpen(true); setPayment("cash"); setCash(""); setCard(""); setMealCard(""); }} disabled={saving || !cart.length} className="mt-3 w-full rounded-xl bg-[#6e1f12] px-4 py-4 font-bold text-white disabled:opacity-40">Hesabı Kapat</button>
             </aside>
           </div>
@@ -1577,6 +1906,59 @@ await loadData();
                   className="rounded-xl bg-[#6e1f12] px-4 py-2 text-sm font-bold text-white"
                 >
                   ✓ Kabul Et
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+
+        {cancelTarget && (
+          <div className="no-print fixed inset-0 z-[20000] flex items-center justify-center bg-black/60 p-4">
+            <div className="w-full max-w-md rounded-3xl border border-black/10 bg-[#fffaf4] p-6 shadow-2xl">
+              <h2
+                className="text-2xl font-bold text-[#6e1f12]"
+                style={{ fontFamily: BRAND_FONT }}
+              >
+                Adisyonu İptal Et
+              </h2>
+
+              <p className="mt-2 text-sm opacity-60">
+                Adisyon #{cancelTarget.id} silinmeyecek; iptal kaydı olarak saklanacak.
+              </p>
+
+              <label className="mt-5 block text-sm font-bold">
+                İptal nedeni
+                <textarea
+                  autoFocus
+                  rows={4}
+                  value={cancelReason}
+                  onChange={(event) => setCancelReason(event.target.value)}
+                  placeholder="Örn. Müşteri vazgeçti, yanlış adisyon açıldı..."
+                  className="mt-2 w-full resize-none rounded-2xl border border-black/15 bg-white px-4 py-3 outline-none focus:border-[#6e1f12]/50"
+                />
+              </label>
+
+              <div className="mt-5 grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCancelTarget(null);
+                    setCancelReason("");
+                  }}
+                  disabled={saving}
+                  className="rounded-2xl border border-black/10 bg-white px-4 py-3 font-bold"
+                >
+                  Vazgeç
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => void confirmCancelOrder()}
+                  disabled={saving || !cancelReason.trim()}
+                  className="rounded-2xl bg-red-700 px-4 py-3 font-bold text-white disabled:opacity-40"
+                >
+                  {saving ? "İptal ediliyor..." : "Adisyonu İptal Et"}
                 </button>
               </div>
             </div>
