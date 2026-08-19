@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { supabaseAdmin } from "../../../../lib/supabaseAdmin";
+import { sendPosPush } from "../../../../lib/sendPosPush";
 
 type RequestedItem = {
   menuItemId: number;
@@ -700,6 +701,20 @@ export async function POST(request: NextRequest) {
     if (itemError) {
       await supabaseAdmin.from("pos_orders").delete().eq("id", order.id);
       throw itemError;
+    }
+
+    try {
+      await sendPosPush({
+        title: "🚨 YENİ WEB SİPARİŞİ",
+        body: `${customerName} · ${total.toLocaleString("tr-TR")} ₺ · ${
+          orderType === "delivery" ? "Paket Servis" : "Gel-Al"
+        }`,
+        orderId: order.id,
+        tag: `web-order-${order.id}`,
+        url: "/pos",
+      });
+    } catch (pushError) {
+      console.error("POS PUSH FAILED:", pushError);
     }
 
     if (customerAuth.userId) {

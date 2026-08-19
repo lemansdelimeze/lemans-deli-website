@@ -3,7 +3,8 @@ import { supabaseAdmin } from "../../../../lib/supabaseAdmin";
 
 type StatusEmailBody = {
   orderId?: number;
-  stage?: "preparing" | "ready";
+  stage?: "preparing" | "ready" | "cancelled";
+  cancelReason?: string | null;
 };
 
 function escapeHtml(value: unknown) {
@@ -15,12 +16,18 @@ function escapeHtml(value: unknown) {
     .replace(/'/g, "&#039;");
 }
 
+function cleanText(value: unknown, maxLength: number) {
+  if (typeof value !== "string") return "";
+  return value.trim().slice(0, maxLength);
+}
+
 async function sendStatusEmail(args: {
   to: string;
   customerName: string;
   orderCode: string;
   orderType: string | null;
-  stage: "preparing" | "ready";
+  stage: "preparing" | "ready" | "cancelled";
+  cancelReason?: string | null;
 }) {
   const apiKey = process.env.RESEND_API_KEY;
 
@@ -28,23 +35,58 @@ async function sendStatusEmail(args: {
     throw new Error("RESEND_API_KEY tanımlı değil.");
   }
 
-  const preparing = args.stage === "preparing";
+  const isPickup =
+    args.orderType === "Gel-Al" ||
+    args.orderType === "pickup" ||
+    args.orderType === "Pickup";
 
-  const subject = preparing
-    ? `Siparişiniz hazırlanıyor · ${args.orderCode}`
-    : `Siparişiniz hazır · ${args.orderCode}`;
+  let subject = "";
+  let title = "";
+  let icon = "";
+  let message = "";
 
-  const title = preparing
-    ? "Siparişiniz hazırlanıyor"
-    : "Siparişiniz hazır!";
+  if (args.stage === "preparing") {
+    subject = `Siparişiniz hazırlanıyor · ${args.orderCode}`;
+    title = "Siparişiniz hazırlanıyor";
+    icon = "👩‍🍳";
+    message =
+      "Siparişinizi hazırlamaya başladık. Hazır olduğunda size tekrar haber vereceğiz.";
+  } else if (args.stage === "ready") {
+    subject = `Siparişiniz hazır · ${args.orderCode}`;
+    title = "Siparişiniz hazır!";
+    icon = "✓";
+    message = isPickup
+      ? "Siparişiniz hazırlandı. Dilediğiniz zaman Leman’s Deli’den teslim alabilirsiniz."
+      : "Siparişiniz hazırlandı ve teslimat için yola çıkmaya hazır. Kısa süre içinde size ulaştıracağız.";
+  } else {
+    subject = `Siparişiniz iptal edildi · ${args.orderCode}`;
+    title = "Siparişiniz iptal edildi";
+    icon = "×";
+    message =
+      "Siparişiniz iptal edilmiştir. Bu sipariş artık hazırlanmayacaktır.";
+  }
 
-  const isPickup = args.orderType === "Gel-Al";
-
-const message = preparing
-  ? "Siparişinizi hazırlamaya başladık. Hazır olduğunda size tekrar haber vereceğiz."
-  : isPickup
-    ? "Siparişiniz hazırlandı. Dilediğiniz zaman Leman’s Deli’den teslim alabilirsiniz."
-    : "Siparişiniz hazırlandı ve teslimat için yola çıkmaya hazır. Kısa süre içinde size ulaştıracağız.";
+  const reason =
+    args.stage === "cancelled" && args.cancelReason
+      ? `
+        <div style="
+          margin:22px auto 0;
+          max-width:420px;
+          padding:16px 18px;
+          background:#fff0ed;
+          border:1px solid #efc7bd;
+          border-radius:16px;
+          text-align:left;
+        ">
+          <div style="font-size:12px;font-weight:700;color:#922800;margin-bottom:6px;">
+            İptal nedeni
+          </div>
+          <div style="font-size:14px;line-height:1.6;color:#5d4037;">
+            ${escapeHtml(args.cancelReason)}
+          </div>
+        </div>
+      `
+      : "";
 
   const html = `
     <div style="
@@ -62,7 +104,6 @@ const message = preparing
         border-radius:24px;
         overflow:hidden;
       ">
-
         <div style="padding:32px 28px 18px;text-align:center;">
           <img
             src="https://lemansdeli.com/logo-horizontal.png"
@@ -79,8 +120,18 @@ const message = preparing
         </div>
 
         <div style="padding:10px 30px 36px;text-align:center;">
-          <div style="font-size:42px;margin-bottom:12px;">
-            ${preparing ? "👩‍🍳" : "✓"}
+          <div style="
+            width:58px;
+            height:58px;
+            margin:0 auto 14px;
+            border-radius:50%;
+            background:${args.stage === "cancelled" ? "#922800" : "#f5efe7"};
+            color:${args.stage === "cancelled" ? "#ffffff" : "#922800"};
+            line-height:58px;
+            font-size:34px;
+            font-weight:700;
+          ">
+            ${icon}
           </div>
 
           <h1 style="
@@ -110,6 +161,8 @@ const message = preparing
             ${message}
           </p>
 
+          ${reason}
+
           <div style="
             margin:24px auto 0;
             max-width:360px;
@@ -120,6 +173,22 @@ const message = preparing
             <strong>Sipariş No:</strong>
             ${escapeHtml(args.orderCode)}
           </div>
+
+          ${
+            args.stage === "cancelled"
+              ? `
+                <p style="
+                  margin:20px auto 0;
+                  max-width:430px;
+                  font-size:13px;
+                  line-height:1.6;
+                  color:#8a756a;
+                ">
+                  Siparişinizle ilgili bir sorunuz varsa bize telefon veya WhatsApp üzerinden ulaşabilirsiniz.
+                </p>
+              `
+              : ""
+          }
         </div>
 
         <div style="
@@ -142,6 +211,8 @@ const message = preparing
     headers: {
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
+      "User-Agent": "lemans-deli-order-api/1.0",
+      "Idempotency-Key": `order-status-${args.orderCode}-${args.stage}`,
     },
     body: JSON.stringify({
       from: "Leman's Deli <no-reply@lemansdeli.com>",
@@ -163,11 +234,14 @@ export async function POST(request: NextRequest) {
 
     const orderId = Number(body.orderId);
     const stage = body.stage;
+    const submittedCancelReason = cleanText(body.cancelReason, 500);
 
     if (
       !Number.isInteger(orderId) ||
       orderId <= 0 ||
-      (stage !== "preparing" && stage !== "ready")
+      (stage !== "preparing" &&
+        stage !== "ready" &&
+        stage !== "cancelled")
     ) {
       return NextResponse.json(
         { ok: false, error: "Geçersiz istek." },
@@ -178,18 +252,18 @@ export async function POST(request: NextRequest) {
     const { data: order, error } = await supabaseAdmin
       .from("pos_orders")
       .select(
-  "id,receipt_number,customer_name,customer_email,source,order_type"
-)
+        "id,receipt_number,customer_name,customer_email,source,order_type,cancel_reason"
+      )
       .eq("id", orderId)
       .single();
 
     if (error) throw error;
 
-    // Şimdilik yalnızca bizim web siparişlerine mail gönderiyoruz.
     if (order.source !== "web") {
       return NextResponse.json({
         ok: true,
         skipped: true,
+        reason: "web siparişi değil",
       });
     }
 
@@ -201,13 +275,21 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    const cancelReason =
+      stage === "cancelled"
+        ? submittedCancelReason ||
+          cleanText(order.cancel_reason, 500) ||
+          null
+        : null;
+
     await sendStatusEmail({
-  to: order.customer_email,
-  customerName: order.customer_name || "Müşteri",
-  orderCode: order.receipt_number || `#${order.id}`,
-  orderType: order.order_type,
-  stage,
-});
+      to: order.customer_email,
+      customerName: order.customer_name || "Müşteri",
+      orderCode: order.receipt_number || `#${order.id}`,
+      orderType: order.order_type,
+      stage,
+      cancelReason,
+    });
 
     return NextResponse.json({
       ok: true,

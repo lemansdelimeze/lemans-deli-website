@@ -109,6 +109,23 @@ function mapsHref(address: string | null) {
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
 }
 
+
+const VAPID_PUBLIC_KEY =
+  process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ||
+  "BF7-ghGe_nLIJ6dBSXM9-hoCcJzWXfWd61msNQwhh-nFy2bpL2xZovMs4Qy-eQyG_nYxZouVbLVlB81WvsWldHU";
+
+function urlBase64ToUint8Array(base64String: string) {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding)
+    .replace(/-/g, "+")
+    .replace(/_/g, "/");
+
+  const rawData = window.atob(base64);
+  return Uint8Array.from(
+    [...rawData].map((character) => character.charCodeAt(0))
+  );
+}
+
 export default function PosPage() {
   const [sessionLoading, setSessionLoading] = useState(true);
   const [loggedIn, setLoggedIn] = useState(false);
@@ -300,6 +317,23 @@ export default function PosPage() {
   }, []);
 
   useEffect(() => {
+    if (!loggedIn || !alertsEnabled) return;
+    if (
+      typeof Notification === "undefined" ||
+      Notification.permission !== "granted"
+    ) {
+      return;
+    }
+
+    void ensureBackgroundPush(false).catch((error) => {
+      console.error(
+        "BACKGROUND PUSH RESTORE ERROR:",
+        error
+      );
+    });
+  }, [loggedIn, alertsEnabled]);
+
+  useEffect(() => {
     let active = true;
 
     async function authorizeSession(
@@ -432,6 +466,39 @@ useEffect(() => {
   }, [loadData, loggedIn]);
 
   useEffect(() => {
+    if (
+      typeof navigator === "undefined" ||
+      !("serviceWorker" in navigator)
+    ) {
+      return;
+    }
+
+    const onServiceWorkerMessage = (
+      event: MessageEvent
+    ) => {
+      if (event.data?.type !== "LEMANS_POS_PUSH") {
+        return;
+      }
+
+      setAlarmMuted(false);
+      ringNewOrder();
+      void loadIncomingOrdersOnly();
+    };
+
+    navigator.serviceWorker.addEventListener(
+      "message",
+      onServiceWorkerMessage
+    );
+
+    return () => {
+      navigator.serviceWorker.removeEventListener(
+        "message",
+        onServiceWorkerMessage
+      );
+    };
+  }, [loadIncomingOrdersOnly]);
+
+  useEffect(() => {
     if (!loggedIn || !trendyolAutoSync) return;
 
     const timer = window.setInterval(() => {
@@ -521,6 +588,124 @@ if (
     } catch {}
   }
 
+  async function savePushSubscription(
+    subscription: PushSubscription
+  ) {
+    const { data: sessionData } =
+      await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+
+    if (!token) {
+      throw new Error("Personel oturumu bulunamadı.");
+    }
+
+    const response = await fetch("/api/push/subscribe", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(subscription.toJSON()),
+    });
+
+    const result = await response.json();
+
+    if (!response.ok || !result.ok) {
+      throw new Error(
+        result.error || "Push bildirimi kaydedilemedi."
+      );
+    }
+  }
+
+  async function ensureBackgroundPush(
+    requestPermission = false
+  ) {
+    if (
+      typeof window === "undefined" ||
+      !("serviceWorker" in navigator) ||
+      !("PushManager" in window) ||
+      typeof Notification === "undefined"
+    ) {
+      throw new Error(
+        "Bu tarayıcı arka plan bildirimini desteklemiyor."
+      );
+    }
+
+    let permission = Notification.permission;
+
+    if (permission === "default" && requestPermission) {
+      permission = await Notification.requestPermission();
+    }
+
+    if (permission !== "granted") {
+      throw new Error(
+        "Bildirim izni verilmedi. Chrome/Windows bildirim iznini açın."
+      );
+    }
+
+    const registration =
+      await navigator.serviceWorker.register("/pos-sw.js", {
+        scope: "/",
+      });
+
+    await navigator.serviceWorker.ready;
+
+    let subscription =
+      await registration.pushManager.getSubscription();
+
+    if (!subscription) {
+      subscription =
+        await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey:
+            urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+        });
+    }
+
+    await savePushSubscription(subscription);
+    return subscription;
+  }
+
+  async function disableBackgroundPush() {
+    if (
+      typeof window === "undefined" ||
+      !("serviceWorker" in navigator)
+    ) {
+      return;
+    }
+
+    const registration =
+      await navigator.serviceWorker.getRegistration("/pos-sw.js");
+
+    const subscription =
+      await registration?.pushManager.getSubscription();
+
+    if (!subscription) return;
+
+    try {
+      const { data: sessionData } =
+        await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+
+      if (token) {
+        await fetch("/api/push/subscribe", {
+          method: "DELETE",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            endpoint: subscription.endpoint,
+          }),
+        });
+      }
+    } catch {}
+
+    try {
+      await subscription.unsubscribe();
+    } catch {}
+  }
+
   async function toggleAlerts() {
     const next = !alertsEnabled;
 
@@ -538,7 +723,10 @@ localStorage.setItem(
         window.clearTimeout(alarmRepeatTimerRef.current);
         alarmRepeatTimerRef.current = null;
       }
-      setChannelMessage("Yeni sipariş sesi kapatıldı.");
+      await disableBackgroundPush();
+      setChannelMessage(
+        "Yeni sipariş sesi ve arka plan bildirimi kapatıldı."
+      );
       return;
     }
 
@@ -558,14 +746,18 @@ localStorage.setItem(
 
     ringNewOrder(true);
 
-    if (
-      typeof Notification !== "undefined" &&
-      Notification.permission === "default"
-    ) {
-      await Notification.requestPermission();
+    try {
+      await ensureBackgroundPush(true);
+      setChannelMessage(
+        "Alarm + arka plan sipariş bildirimi etkinleştirildi. POS kapalı olsa da bildirim gelecektir."
+      );
+    } catch (pushError) {
+      setChannelMessage(
+        pushError instanceof Error
+          ? `Alarm açık; arka plan bildirimi açılamadı: ${pushError.message}`
+          : "Alarm açık; arka plan bildirimi açılamadı."
+      );
     }
-
-    setChannelMessage("Yeni sipariş alarmı ve tarayıcı bildirimi etkinleştirildi.");
   }
 
   function muteCurrentAlarm() {
@@ -1073,6 +1265,33 @@ await loadData();
         setOrderNote("");
         setDiscountType("none");
         setDiscountValue("");
+      }
+
+      if (currentOrder.source === "web") {
+        try {
+          const response = await fetch("/api/orders/status-email", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              orderId: cancelTarget.id,
+              stage: "cancelled",
+              cancelReason: reason,
+            }),
+          });
+
+          const result = await response.json();
+
+          if (!response.ok || !result.ok) {
+            console.error(
+              "İptal maili gönderilemedi:",
+              result.error || result
+            );
+          }
+        } catch (emailError) {
+          console.error("İptal maili gönderilemedi:", emailError);
+        }
       }
 
       setChannelMessage(
