@@ -43,6 +43,13 @@ type CategoryGroup = {
 const BRAND_FONT =
   '"American Typewriter", "Courier New", Courier, monospace';
 
+// Günlük A4 menüde yalnızca hazır servis edilen ürünler gösterilir.
+// Şarküteri ve peynirler web menüsünde görünmeye devam eder.
+const PRINT_HIDDEN_CATEGORY_SLUGS = new Set([
+  "sarkuteri",
+  "peynir",
+]);
+
 function formatPrice(price: number) {
   return Number(price).toLocaleString("tr-TR", {
     maximumFractionDigits: 2,
@@ -158,7 +165,13 @@ export default function PrintableMenuPage() {
           items: categoryItems,
         };
       })
-      .filter((group) => group.items.length > 0);
+      .filter(
+        (group) =>
+          group.items.length > 0 &&
+          !PRINT_HIDDEN_CATEGORY_SLUGS.has(
+            group.category.slug
+          )
+      );
   }, [categories, items]);
 
   if (loading) {
