@@ -43,40 +43,10 @@ type CategoryGroup = {
 const BRAND_FONT =
   '"American Typewriter", "Courier New", Courier, monospace';
 
-const DAILY_REFERENCE_KCAL = 2000;
-
-const allergenLabels: Record<string, string> = {
-  milk: "Süt",
-  gluten: "Gluten",
-  egg: "Yumurta",
-  nuts: "Kuruyemiş",
-  peanut: "Yer fıstığı",
-  sesame: "Susam",
-  celery: "Kereviz",
-  soy: "Soya",
-  mustard: "Hardal",
-  fish: "Balık",
-  shellfish: "Kabuklu deniz ürünü",
-};
-
-const dietaryLabels: Record<Dietary, string> = {
-  none: "",
-  vegan: "Vegan",
-  vegetarian: "Vejetaryen",
-};
-
 function formatPrice(price: number) {
   return Number(price).toLocaleString("tr-TR", {
     maximumFractionDigits: 2,
   });
-}
-
-function dailyReferencePercent(calories: number | null) {
-  if (!calories || calories <= 0) return null;
-
-  return Math.round(
-    (calories / DAILY_REFERENCE_KCAL) * 100
-  );
 }
 
 export default function PrintableMenuPage() {
@@ -237,13 +207,14 @@ export default function PrintableMenuPage() {
           .print-sheet {
             margin: 0 !important;
             box-shadow: none !important;
-            min-height: 0 !important;
-            overflow: visible !important;
+            width: 210mm !important;
+            min-height: 297mm !important;
+            overflow: hidden !important;
           }
 
           .menu-section {
-            break-inside: auto;
-            page-break-inside: auto;
+            break-inside: avoid;
+            page-break-inside: avoid;
           }
 
           .menu-item {
@@ -251,10 +222,6 @@ export default function PrintableMenuPage() {
             page-break-inside: avoid;
           }
 
-          .menu-category-heading {
-            break-after: avoid;
-            page-break-after: avoid;
-          }
         }
       `}</style>
 
@@ -278,7 +245,7 @@ export default function PrintableMenuPage() {
         </button>
       </div>
 
-      <main className="print-sheet relative mx-auto my-8 min-h-[297mm] w-[210mm] overflow-hidden bg-[#f4efe5] px-[14mm] py-[11mm] text-[#242820] shadow-2xl">
+      <main className="print-sheet relative mx-auto my-8 min-h-[297mm] w-[210mm] overflow-hidden bg-[#f4efe5] px-[10mm] py-[12mm] text-[#242820] shadow-2xl">
         <div
           aria-hidden="true"
           className="pointer-events-none absolute inset-0 z-0 flex items-center justify-center"
@@ -286,42 +253,42 @@ export default function PrintableMenuPage() {
           <img
             src="/logo.png"
             alt=""
-            className="max-h-[180mm] w-[130mm] object-contain opacity-[0.022]"
+            className="max-h-[132mm] w-[112mm] object-contain opacity-[0.028]"
           />
         </div>
 
         <div className="relative z-10">
-          <header className="mb-[9mm] text-center">
+          <header className="mb-[6mm] text-center">
             <img
               src="/logo-horizontal.png"
               alt="Leman's Deli"
-              className="mx-auto block w-[94mm] object-contain"
+              className="mx-auto block w-[78mm] object-contain"
             />
 
-            <div className="mt-[4.5mm] flex items-center justify-center gap-[5mm]">
-              <span className="h-px w-[32mm] bg-[#6e1f12]/22" />
+            <div className="mt-[3mm] flex items-center justify-center gap-[4mm]">
+              <span className="h-px w-[28mm] bg-[#6e1f12]/25" />
 
               <div>
                 <p
                   style={{ fontFamily: BRAND_FONT }}
-                  className="text-[13px] font-semibold uppercase tracking-[0.22em] text-[#6e1f12]"
+                  className="text-[12px] font-semibold uppercase tracking-[0.22em] text-[#6e1f12]"
                 >
                   Menü
                 </p>
 
                 <p
                   style={{ fontFamily: BRAND_FONT }}
-                  className="mt-[1mm] text-[8px] uppercase tracking-[0.16em] text-[#242820]/45"
+                  className="mt-[0.6mm] text-[8px] uppercase tracking-[0.16em] text-[#242820]/50"
                 >
                   Kaş
                 </p>
               </div>
 
-              <span className="h-px w-[32mm] bg-[#6e1f12]/22" />
+              <span className="h-px w-[28mm] bg-[#6e1f12]/25" />
             </div>
           </header>
 
-          <div className="columns-2 gap-x-[11mm]">
+          <div className="columns-3 gap-x-[6mm]">
             {groupedCategories.map((group) => (
               <MenuCategory
                 key={group.category.id}
@@ -331,7 +298,7 @@ export default function PrintableMenuPage() {
             ))}
           </div>
 
-          <footer className="mt-[11mm] flex items-center justify-between border-t border-[#6e1f12]/18 pt-[3mm] text-[7px] tracking-[0.035em] text-[#242820]/48">
+          <footer className="mt-[7mm] flex items-center justify-between border-t border-[#6e1f12]/20 pt-[2.5mm] text-[7px] tracking-[0.035em] text-[#242820]/55">
             <span>
               Günlük hazırlanır · Mevsimsel ürünlere göre
               çeşitler değişebilir.
@@ -355,51 +322,37 @@ function MenuCategory({
   items: MenuItem[];
 }) {
   return (
-    <section className="menu-section">
-      <div className="menu-category-heading mb-[2.5mm]">
+    <section className="menu-section mb-[5.5mm]">
+      <div className="mb-[2.4mm] border-b border-[#6e1f12]/25 pb-[1.8mm]">
         <h2
           style={{ fontFamily: BRAND_FONT }}
-          className="text-[23px] font-semibold leading-none text-[#6e1f12]"
+          className="text-[16px] font-semibold leading-none tracking-[-0.02em] text-[#6e1f12]"
         >
           {title}
         </h2>
 
-        <div className="mt-[2.2mm] h-px w-full bg-[#6e1f12]/18" />
       </div>
 
-      <div className="space-y-[2.5mm]">
+      <div className="space-y-[1.8mm]">
         {items.map((item) => {
           const name =
             item.name_tr ||
             item.name ||
             "İsimsiz ürün";
 
-          const allergens = item.allergens ?? [];
-
-          const dietary =
-            item.dietary &&
-            item.dietary !== "none"
-              ? dietaryLabels[item.dietary]
-              : "";
-
-          const percentage =
-            dailyReferencePercent(
-              item.calories_per_portion
-            );
-
           return (
             <article
               key={item.id}
               className="menu-item"
             >
-              <div className="flex items-start justify-between gap-[2.5mm]">
+              <div className="flex items-start justify-between gap-[2mm]">
                 <div className="min-w-0 flex-1">
                   <h3
                     style={{
                       fontFamily: BRAND_FONT,
                       fontWeight: 700,
                     }}
-                    className="text-[13px] leading-[1.2] text-[#6e1f12]"
+                    className="text-[11.5px] leading-[1.18] text-[#6e1f12]"
                   >
                     {name}
                   </h3>
@@ -409,7 +362,7 @@ function MenuCategory({
                       style={{
                         fontFamily: BRAND_FONT,
                       }}
-                      className="mt-[0.5mm] text-[8.5px] text-[#242820]/48"
+                      className="mt-[0.6mm] text-[9.5px] font-semibold tracking-[0.01em] text-[#5a463d]"
                     >
                       {item.portion}
                     </p>
@@ -421,56 +374,13 @@ function MenuCategory({
                     style={{
                       fontFamily: BRAND_FONT,
                     }}
-                    className="shrink-0 text-[12px] font-semibold text-[#6e1f12]"
+                    className="shrink-0 text-[11.5px] font-semibold text-[#6e1f12]"
                   >
                     {formatPrice(item.price)} ₺
                   </span>
                 )}
               </div>
 
-              {item.description_tr && (
-                <p className="mt-[1.25mm] max-w-[96%] text-[8.2px] leading-[1.5] text-[#242820]/58">
-                  {item.description_tr}
-                </p>
-              )}
-
-              {(dietary ||
-                allergens.length > 0 ||
-                item.calories_per_portion !== null) && (
-                <div className="mt-[1.25mm] flex flex-wrap gap-x-[2.2mm] gap-y-[1mm] text-[6.8px] uppercase tracking-[0.06em]">
-                  {dietary && (
-                    <span
-                      style={{
-                        fontFamily: BRAND_FONT,
-                      }}
-                      className="font-semibold text-[#6e1f12]"
-                    >
-                      {dietary}
-                    </span>
-                  )}
-
-                  {allergens.length > 0 && (
-                    <span className="text-[#242820]/48">
-                      Alerjen:{" "}
-                      {allergens
-                        .map(
-                          (allergen) =>
-                            allergenLabels[allergen] ??
-                            allergen
-                        )
-                        .join(" · ")}
-                    </span>
-                  )}
-
-                  {item.calories_per_portion !== null && (
-                    <span className="text-[#242820]/48">
-                      {item.calories_per_portion} kcal
-                      {percentage !== null &&
-                        ` · %${percentage} referans`}
-                    </span>
-                  )}
-                </div>
-              )}
             </article>
           );
         })}
