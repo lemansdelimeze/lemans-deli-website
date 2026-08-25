@@ -237,12 +237,23 @@ export default function PrintableMenuPage() {
           .print-sheet {
             margin: 0 !important;
             box-shadow: none !important;
+            min-height: 0 !important;
+            overflow: visible !important;
           }
 
-          .menu-item,
           .menu-section {
+            break-inside: auto;
+            page-break-inside: auto;
+          }
+
+          .menu-item {
             break-inside: avoid;
             page-break-inside: avoid;
+          }
+
+          .menu-category-heading {
+            break-after: avoid;
+            page-break-after: avoid;
           }
         }
       `}</style>
@@ -310,7 +321,7 @@ export default function PrintableMenuPage() {
             </div>
           </header>
 
-          <div className="grid grid-cols-2 gap-x-[11mm] gap-y-[9mm]">
+          <div className="columns-2 gap-x-[11mm]">
             {groupedCategories.map((group) => (
               <MenuCategory
                 key={group.category.id}
@@ -345,7 +356,7 @@ function MenuCategory({
 }) {
   return (
     <section className="menu-section">
-      <div className="mb-[2.5mm]">
+      <div className="menu-category-heading mb-[2.5mm]">
         <h2
           style={{ fontFamily: BRAND_FONT }}
           className="text-[23px] font-semibold leading-none text-[#6e1f12]"
