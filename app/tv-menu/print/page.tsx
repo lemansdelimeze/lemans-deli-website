@@ -18,7 +18,11 @@ type MenuItem = {
 
   name: string | null;
   name_tr: string | null;
+  name_en: string | null;
+  name_ru: string | null;
   description_tr: string | null;
+  description_en: string | null;
+  description_ru: string | null;
 
   price: number | null;
   category: string | null;
@@ -83,7 +87,11 @@ export default function PrintableMenuPage() {
               id,
               name,
               name_tr,
+              name_en,
+              name_ru,
               description_tr,
+              description_en,
+              description_ru,
               price,
               category,
               category_id,
@@ -305,6 +313,7 @@ export default function PrintableMenuPage() {
             {groupedCategories.map((group) => (
               <MenuCategory
                 key={group.category.id}
+                slug={group.category.slug}
                 title={group.category.name_tr}
                 items={group.items}
               />
@@ -328,12 +337,20 @@ export default function PrintableMenuPage() {
 }
 
 function MenuCategory({
+  slug,
   title,
   items,
 }: {
+  slug: string;
   title: string;
   items: MenuItem[];
 }) {
+  const showDescriptions = [
+    "sandvic",
+    "sosisli",
+    "tost",
+  ].includes(slug);
+
   return (
     <section className="menu-section mb-[5.5mm]">
       <div className="mb-[2.4mm] border-b border-[#6e1f12]/25 pb-[1.8mm]">
@@ -352,6 +369,15 @@ function MenuCategory({
             item.name_tr ||
             item.name ||
             "İsimsiz ürün";
+
+          const translations = [
+            item.name_en && item.name_en !== name
+              ? `EN · ${item.name_en}`
+              : null,
+            item.name_ru && item.name_ru !== name
+              ? `RU · ${item.name_ru}`
+              : null,
+          ].filter(Boolean);
 
           return (
             <article
@@ -393,6 +419,30 @@ function MenuCategory({
                   </span>
                 )}
               </div>
+
+              {showDescriptions && translations.length > 0 && (
+                <p className="mt-[0.5mm] text-[7.4px] leading-[1.3] text-[#242820]/62">
+                  {translations.join(" · ")}
+                </p>
+              )}
+
+              {showDescriptions && item.description_tr && (
+                <p className="mt-[0.8mm] pr-[1mm] text-[8.8px] leading-[1.34] text-[#242820]/78">
+                  {item.description_tr}
+                </p>
+              )}
+
+              {showDescriptions && item.description_en && (
+                <p className="mt-[0.45mm] pr-[1mm] text-[7.4px] leading-[1.3] text-[#242820]/62">
+                  EN · {item.description_en}
+                </p>
+              )}
+
+              {showDescriptions && item.description_ru && (
+                <p className="mt-[0.35mm] pr-[1mm] text-[7.4px] leading-[1.3] text-[#242820]/62">
+                  RU · {item.description_ru}
+                </p>
+              )}
 
             </article>
           );
