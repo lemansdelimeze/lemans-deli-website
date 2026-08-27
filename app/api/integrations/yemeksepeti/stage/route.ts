@@ -18,6 +18,68 @@ type YemeksepetiPayload = {
   };
 };
 
+let cachedAccessToken: {
+  token: string;
+  expiresAt: number;
+} | null = null;
+
+async function middlewareAccessToken() {
+  if (
+    cachedAccessToken &&
+    cachedAccessToken.expiresAt > Date.now() + 30_000
+  ) {
+    return cachedAccessToken.token;
+  }
+
+  const baseUrl = process.env.YEMEKSEPETI_MIDDLEWARE_BASE_URL;
+  const username = process.env.YEMEKSEPETI_MIDDLEWARE_USERNAME;
+  const password = process.env.YEMEKSEPETI_MIDDLEWARE_PASSWORD;
+
+  if (!baseUrl || !username || !password) {
+    throw new Error("Yemeksepeti erişim bilgileri eksik.");
+  }
+
+  const body = new URLSearchParams({
+    username,
+    password,
+    grant_type: "client_credentials",
+  });
+
+  const response = await fetch(`${baseUrl.replace(/\/$/, "")}/v2/login`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      Accept: "application/json",
+    },
+    body,
+    cache: "no-store",
+  });
+
+  const raw = await response.text();
+
+  if (!response.ok) {
+    throw new Error(
+      `Yemeksepeti token alınamadı: HTTP ${response.status}`
+    );
+  }
+
+  const data = JSON.parse(raw) as {
+    access_token?: string;
+    expires_in?: number;
+  };
+
+  if (!data.access_token) {
+    throw new Error("Yemeksepeti erişim tokenı dönmedi.");
+  }
+
+  cachedAccessToken = {
+    token: data.access_token,
+    expiresAt: Date.now() + Number(data.expires_in || 300) * 1000,
+  };
+
+  return cachedAccessToken.token;
+}
+
 function supabaseForRequest(request: NextRequest) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -120,10 +182,11 @@ export async function POST(request: NextRequest) {
 
     const callbackResponse = await fetch(callbackUrl, {
       method: "POST",
-      headers: {
-        Accept: "application/json",
-        "Content-Type": "application/json",
-      },
+     headers: {
+  Accept: "application/json",
+  "Content-Type": "application/json",
+Authorization: `Bearer ${await middlewareAccessToken()}`,
+},
       body: JSON.stringify(callbackBody),
       cache: "no-store",
     });
