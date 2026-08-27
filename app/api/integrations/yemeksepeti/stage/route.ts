@@ -168,31 +168,31 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    cconst callbackBody =
-  body.stage === "accepted"
-    ? {
-        remoteOrderId: String(order.id),
-        status: "accepted",
-        expectedDeliveryTime:
-          payload.delivery?.expectedDeliveryTime ||
-          new Date(Date.now() + 45 * 60 * 1000).toISOString(),
-      }
-    : body.stage === "ready"
-      ? {
-          remoteOrderId: String(order.id),
-        }
-      : {
-          remoteOrderId: String(order.id),
-          status: "picked_up",
-        };
+    const callbackBody =
+      body.stage === "accepted"
+        ? {
+            remoteOrderId: String(order.id),
+            status: "accepted",
+            expectedDeliveryTime:
+              payload.delivery?.expectedDeliveryTime ||
+              new Date(Date.now() + 45 * 60 * 1000).toISOString(),
+          }
+        : body.stage === "ready"
+          ? {
+              remoteOrderId: String(order.id),
+            }
+          : {
+              remoteOrderId: String(order.id),
+              status: "picked_up",
+            };
 
     const callbackResponse = await fetch(callbackUrl, {
       method: "POST",
-     headers: {
-  Accept: "application/json",
-  "Content-Type": "application/json",
-Authorization: `Bearer ${await middlewareAccessToken()}`,
-},
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${await middlewareAccessToken()}`,
+      },
       body: JSON.stringify(callbackBody),
       cache: "no-store",
     });
