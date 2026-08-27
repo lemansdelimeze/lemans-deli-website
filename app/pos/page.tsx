@@ -1899,7 +1899,7 @@ await loadData();
                         </p>
                       )}
                       {order.order_note && (
-                        <p className="mt-2 rounded-xl bg-amber-50 px-3 py-2 text-sm">
+                        <p className="mt-2 whitespace-pre-line rounded-xl bg-amber-50 px-3 py-2 text-sm">
                           <strong>Not:</strong> {order.order_note}
                         </p>
                       )}
