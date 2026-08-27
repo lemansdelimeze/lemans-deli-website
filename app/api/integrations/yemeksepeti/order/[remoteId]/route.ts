@@ -17,14 +17,36 @@ type DeliveryHeroProduct = {
 type DeliveryHeroOrder = {
   token?: string;
   code?: string;
+  shortCode?: string | null;
   test?: boolean;
+  createdAt?: string | null;
   expeditionType?: "delivery" | "pickup";
   comments?: { customerComment?: string | null };
   customer?: {
     firstName?: string | null;
     lastName?: string | null;
+    mobilePhone?: string | null;
   };
-  payment?: { status?: string | null };
+  payment?: {
+    status?: string | null;
+    type?: string | null;
+  };
+  delivery?: {
+    expectedDeliveryTime?: string | null;
+    address?: {
+      city?: string | null;
+      district?: string | null;
+      street?: string | null;
+      number?: string | null;
+      building?: string | null;
+      floor?: string | null;
+      room?: string | null;
+      flatNumber?: string | null;
+      postcode?: string | null;
+      deliveryMainArea?: string | null;
+      deliveryInstructions?: string | null;
+    };
+  };
   platformRestaurant?: { id?: string | null };
   price?: {
     grandTotal?: string | number | null;
@@ -37,6 +59,74 @@ type DeliveryHeroOrder = {
 function numberValue(value: unknown) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function textValue(value?: string | null) {
+  return value?.trim() || null;
+}
+
+function formatTurkeyTime(value?: string | null) {
+  if (!value) return null;
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+
+  return new Intl.DateTimeFormat("tr-TR", {
+    timeZone: "Europe/Istanbul",
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
+
+function deliveryAddressOf(payload: DeliveryHeroOrder) {
+  const address = payload.delivery?.address;
+  if (!address) return null;
+
+  return [
+    address.deliveryMainArea,
+    address.street,
+    address.number ? `No: ${address.number}` : null,
+    address.building,
+    address.floor ? `Kat: ${address.floor}` : null,
+    address.room ? `Daire: ${address.room}` : null,
+    address.flatNumber ? `İç Kapı: ${address.flatNumber}` : null,
+    address.district,
+    address.city,
+    address.postcode,
+  ]
+    .filter(Boolean)
+    .join(", ") || null;
+}
+
+function orderNoteOf(payload: DeliveryHeroOrder) {
+  const paymentType = textValue(payload.payment?.type);
+  const customerNote = textValue(payload.comments?.customerComment);
+  const deliveryNote = textValue(
+    payload.delivery?.address?.deliveryInstructions
+  );
+  const orderTime = formatTurkeyTime(payload.createdAt);
+  const expectedTime = formatTurkeyTime(
+    payload.delivery?.expectedDeliveryTime
+  );
+
+  const notes = [
+    payload.shortCode ? `Yemeksepeti Sipariş No: ${payload.shortCode}` : null,
+    paymentType ? `Ödeme: ${paymentType}` : null,
+    orderTime ? `Sipariş saati: ${orderTime}` : null,
+    expectedTime ? `Hedef teslim: ${expectedTime}` : null,
+    customerNote && customerNote !== paymentType
+      ? `Müşteri notu: ${customerNote}`
+      : null,
+    deliveryNote &&
+    deliveryNote !== paymentType &&
+    deliveryNote !== customerNote
+      ? `Teslimat notu: ${deliveryNote}`
+      : null,
+  ].filter(Boolean);
+
+  return notes.join("\n") || null;
 }
 
 function verifyMiddlewareJwt(request: NextRequest) {
@@ -178,12 +268,10 @@ export async function POST(
     }
 
     const subtotal = rows.reduce((sum, row) => sum + row.line_total, 0);
-    const customerName = [
-      payload.customer?.firstName,
-      payload.customer?.lastName,
-    ]
-      .filter(Boolean)
-      .join(" ") || null;
+    const customerName =
+      [payload.customer?.firstName, payload.customer?.lastName]
+        .filter(Boolean)
+        .join(" ") || null;
 
     const total =
       numberValue(payload.price?.grandTotal) ||
@@ -197,12 +285,17 @@ export async function POST(
         order_type:
           payload.expeditionType === "pickup" ? "Gel Al" : "Paket",
         customer_name: customerName,
-        order_note: payload.comments?.customerComment || null,
+        customer_phone: textValue(payload.customer?.mobilePhone),
+        delivery_address: deliveryAddressOf(payload),
+        order_note: orderNoteOf(payload),
         subtotal,
         discount_amount: 0,
         total,
         payment_method:
-          payload.payment?.status === "paid" ? "card" : "pending",
+          textValue(payload.payment?.type) ||
+          (payload.payment?.status === "paid"
+            ? "Online Ödeme"
+            : "Kapıda Ödeme"),
         status: "open",
         source: "yemeksepeti",
         external_order_id: externalOrderId,
