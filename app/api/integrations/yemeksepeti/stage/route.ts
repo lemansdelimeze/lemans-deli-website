@@ -168,17 +168,23 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const callbackBody =
-      body.stage === "accepted"
-        ? {
-            remoteOrderId: String(order.id),
-            expectedDeliveryTime:
-              payload.delivery?.expectedDeliveryTime ||
-              new Date(Date.now() + 45 * 60 * 1000).toISOString(),
-          }
-        : {
-            remoteOrderId: String(order.id),
-          };
+    cconst callbackBody =
+  body.stage === "accepted"
+    ? {
+        remoteOrderId: String(order.id),
+        status: "accepted",
+        expectedDeliveryTime:
+          payload.delivery?.expectedDeliveryTime ||
+          new Date(Date.now() + 45 * 60 * 1000).toISOString(),
+      }
+    : body.stage === "ready"
+      ? {
+          remoteOrderId: String(order.id),
+        }
+      : {
+          remoteOrderId: String(order.id),
+          status: "picked_up",
+        };
 
     const callbackResponse = await fetch(callbackUrl, {
       method: "POST",
