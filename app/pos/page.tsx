@@ -949,7 +949,11 @@ localStorage.setItem(
       const result = await response.json();
 
       if (!response.ok || !result.ok) {
-        alert(result.error || "Yemeksepeti durumu güncellenemedi.");
+       alert(
+  [result.error, result.response]
+    .filter(Boolean)
+    .join("\n\n")
+);
         return;
       }
 
