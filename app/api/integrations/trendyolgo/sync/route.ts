@@ -33,8 +33,16 @@ type TgPackage = {
   storeId: number;
   orderId: string;
   orderNumber: string;
+  orderCode?: string | null;
   packageStatus: string;
   totalPrice: number;
+  eta?: string | null;
+  customerNote?: string | null;
+  packageCreationDate?: number | null;
+  packageModificationDate?: number | null;
+  totalDeliveryPrice?: number;
+  address?: unknown;
+  payment?: unknown;
   customer?: {
     firstName?: string;
     lastName?: string;
@@ -51,11 +59,9 @@ type TgPackage = {
   invoiceAddress?: unknown;
   billingAddress?: unknown;
   deliveryAddress?: unknown;
-  customerNote?: string | null;
-  [key: string]: unknown;
   lines: TgLine[];
-  promotions?: TgPromotion[];
-  totalDeliveryPrice?: number;
+  promotions?: TgPromotion[] | null;
+  [key: string]: unknown;
 };
 
 type TgPackageResponse = {
@@ -80,10 +86,12 @@ function stringValue(value: unknown): string | null {
 
 function readPath(source: unknown, path: string[]): unknown {
   let current: unknown = source;
+
   for (const key of path) {
     if (!isRecord(current)) return undefined;
     current = current[key];
   }
+
   return current;
 }
 
@@ -92,6 +100,7 @@ function firstString(source: unknown, paths: string[][]): string | null {
     const value = stringValue(readPath(source, path));
     if (value) return value;
   }
+
   return null;
 }
 
@@ -100,24 +109,116 @@ function firstRecord(source: unknown, paths: string[][]): JsonRecord | null {
     const value = readPath(source, path);
     if (isRecord(value)) return value;
   }
+
   return null;
 }
 
 function cleanTaxNumber(value: string | null): string | null {
   if (!value) return null;
+
   const digits = value.replace(/\D/g, "");
   if (digits.length === 10 || digits.length === 11) return digits;
+
   return value.trim() || null;
+}
+
+function formatTurkeyTime(value?: number | null) {
+  if (!value) return null;
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+
+  return new Intl.DateTimeFormat("tr-TR", {
+    timeZone: "Europe/Istanbul",
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
 }
 
 function joinAddress(address: JsonRecord | null): string | null {
   if (!address) return null;
+
   const parts = [
-    firstString(address, [["address1"], ["addressLine1"], ["street"], ["address"]]),
+    firstString(address, [
+      ["address1"],
+      ["addressLine1"],
+      ["street"],
+      ["address"],
+    ]),
     firstString(address, [["address2"], ["addressLine2"]]),
     firstString(address, [["neighborhood"], ["mahalle"]]),
+    firstString(address, [["addressDescription"]]),
+    firstString(address, [["district"], ["districtName"], ["ilce"]]),
+    firstString(address, [["city"], ["cityName"], ["province"], ["il"]]),
+    firstString(address, [["postalCode"], ["postcode"]]),
   ].filter(Boolean);
-  return parts.length ? parts.join(" ") : null;
+
+  return parts.length ? parts.join(", ") : null;
+}
+
+function trendyolAddress(pkg: TgPackage) {
+  const addressRecord = firstRecord(pkg, [
+    ["address"],
+    ["deliveryAddress"],
+    ["customer", "address"],
+  ]);
+
+  return (
+    joinAddress(addressRecord) ||
+    firstString(pkg, [
+      ["address", "fullAddress"],
+      ["deliveryAddress", "fullAddress"],
+      ["customer", "address", "fullAddress"],
+    ])
+  );
+}
+
+function trendyolPhone(pkg: TgPackage) {
+  return firstString(pkg, [
+    ["address", "phone"],
+    ["deliveryAddress", "phone"],
+    ["customer", "phone"],
+    ["customer", "mobilePhone"],
+    ["callCenterPhone"],
+  ]);
+}
+
+function trendyolPaymentMethod(pkg: TgPackage) {
+  const paymentType =
+    firstString(pkg, [["payment", "paymentType"]])?.toUpperCase() ?? "";
+
+  if (
+    paymentType === "PAY_WITH_CARD" ||
+    paymentType.includes("CARD") ||
+    paymentType.includes("ONLINE")
+  ) {
+    return "Online Kart Ödemesi";
+  }
+
+  if (
+    paymentType.includes("CASH") ||
+    paymentType.includes("ON_DELIVERY")
+  ) {
+    return "Kapıda Ödeme";
+  }
+
+  return paymentType || "Ödeme bilgisi bekleniyor";
+}
+
+function trendyolOrderNote(pkg: TgPackage) {
+  const notes = [
+    pkg.orderCode ? `Trendyol Sipariş Kodu: ${pkg.orderCode}` : null,
+    `Ödeme: ${trendyolPaymentMethod(pkg)}`,
+    formatTurkeyTime(pkg.packageCreationDate)
+      ? `Sipariş saati: ${formatTurkeyTime(pkg.packageCreationDate)}`
+      : null,
+    pkg.eta ? `Tahmini teslimat: ${pkg.eta}` : null,
+    pkg.customerNote ? `Müşteri notu: ${pkg.customerNote}` : null,
+  ].filter(Boolean);
+
+  return notes.join("\n") || null;
 }
 
 function extractInvoiceData(pkg: TgPackage) {
@@ -139,39 +240,79 @@ function extractInvoiceData(pkg: TgPackage) {
 
   const taxNumber = cleanTaxNumber(
     firstString(pkg, [
-      ["customer", "taxNumber"], ["customer", "identityNumber"],
-      ["customer", "identityNo"], ["customer", "tckn"], ["customer", "vkn"],
-      ["taxNumber"], ["identityNumber"], ["identityNo"], ["tckn"], ["vkn"],
-      ["invoiceAddress", "taxNumber"], ["invoiceAddress", "identityNumber"],
-      ["billingAddress", "taxNumber"], ["billingAddress", "identityNumber"],
+      ["customer", "taxNumber"],
+      ["customer", "identityNumber"],
+      ["customer", "identityNo"],
+      ["customer", "tckn"],
+      ["customer", "vkn"],
+      ["taxNumber"],
+      ["identityNumber"],
+      ["identityNo"],
+      ["tckn"],
+      ["vkn"],
+      ["invoiceAddress", "taxNumber"],
+      ["invoiceAddress", "identityNumber"],
+      ["billingAddress", "taxNumber"],
+      ["billingAddress", "identityNumber"],
     ])
   );
 
   const taxOffice = firstString(pkg, [
-    ["customer", "taxOffice"], ["taxOffice"],
-    ["invoiceAddress", "taxOffice"], ["billingAddress", "taxOffice"],
+    ["customer", "taxOffice"],
+    ["taxOffice"],
+    ["invoiceAddress", "taxOffice"],
+    ["billingAddress", "taxOffice"],
   ]);
 
   const email = firstString(pkg, [
-    ["customer", "email"], ["customerEmail"], ["email"],
-    ["invoiceAddress", "email"], ["billingAddress", "email"],
+    ["customer", "email"],
+    ["customerEmail"],
+    ["email"],
+    ["invoiceAddress", "email"],
+    ["billingAddress", "email"],
   ]);
 
   const addressRecord = firstRecord(pkg, [
-    ["invoiceAddress"], ["billingAddress"], ["customer", "invoiceAddress"],
-    ["customer", "address"], ["deliveryAddress"],
+    ["invoiceAddress"],
+    ["billingAddress"],
+    ["customer", "invoiceAddress"],
+    ["customer", "address"],
+    ["address"],
+    ["deliveryAddress"],
   ]);
 
-  const address = joinAddress(addressRecord) || firstString(pkg, [
-    ["invoiceAddress", "fullAddress"], ["billingAddress", "fullAddress"],
-    ["deliveryAddress", "fullAddress"], ["customer", "address", "fullAddress"],
+  const address =
+    joinAddress(addressRecord) ||
+    firstString(pkg, [
+      ["invoiceAddress", "fullAddress"],
+      ["billingAddress", "fullAddress"],
+      ["address", "fullAddress"],
+      ["deliveryAddress", "fullAddress"],
+      ["customer", "address", "fullAddress"],
+    ]);
+
+  const city = firstString(addressRecord, [
+    ["city"],
+    ["cityName"],
+    ["province"],
+    ["provinceName"],
+    ["il"],
   ]);
 
-  const city = firstString(addressRecord, [["city"], ["cityName"], ["province"], ["provinceName"], ["il"]]);
-  const district = firstString(addressRecord, [["district"], ["districtName"], ["town"], ["ilce"]]);
+  const district = firstString(addressRecord, [
+    ["district"],
+    ["districtName"],
+    ["town"],
+    ["ilce"],
+  ]);
+
   const digits = taxNumber?.replace(/\D/g, "") ?? "";
   const invoiceCustomerType: "individual" | "company" | null =
-    companyName || digits.length === 10 ? "company" : digits.length === 11 ? "individual" : null;
+    companyName || digits.length === 10
+      ? "company"
+      : digits.length === 11
+        ? "individual"
+        : null;
 
   return {
     customerName,
@@ -186,9 +327,21 @@ function extractInvoiceData(pkg: TgPackage) {
   };
 }
 
-async function findMenuItemId(
-  productId: number
-): Promise<number | null> {
+function posStatusForPackage(packageStatus: string) {
+  const status = packageStatus.toUpperCase();
+
+  if (status === "CANCELLED" || status === "UNDELIVERED") {
+    return "cancelled";
+  }
+
+  if (status === "DELIVERED") {
+    return "closed";
+  }
+
+  return "open";
+}
+
+async function findMenuItemId(productId: number): Promise<number | null> {
   const { data, error } = await supabaseAdmin
     .from("integration_product_mappings")
     .select("menu_item_id")
@@ -198,23 +351,8 @@ async function findMenuItemId(
     .maybeSingle();
 
   if (error) throw error;
+
   return data?.menu_item_id ?? null;
-}
-
-
-function trendyolPaymentMethod(pkg: TgPackage) {
-  const paymentType = firstString(pkg, [["payment", "paymentType"]])?.toUpperCase() ?? "";
-
-  // Trendyol kart/online ödemesi sipariş gelmeden önce tahsil edilmiştir.
-  if (
-    paymentType === "PAY_WITH_CARD" ||
-    paymentType.includes("CARD") ||
-    paymentType.includes("ONLINE")
-  ) {
-    return "card";
-  }
-
-  return "pending";
 }
 
 export async function POST() {
@@ -231,25 +369,70 @@ export async function POST() {
     );
 
     let imported = 0;
-    let skipped = 0;
+    let updated = 0;
     let unmatched = 0;
     const unmatchedProducts = new Map<string, string>();
 
     for (const pkg of response.content ?? []) {
       const externalOrderId = pkg.orderNumber || pkg.orderId || pkg.id;
 
-      const { data: existing, error: existingError } =
-        await supabaseAdmin
-          .from("pos_orders")
-          .select("id")
-          .eq("source", "trendyol")
-          .eq("external_order_id", externalOrderId)
-          .maybeSingle();
+      const invoice = extractInvoiceData(pkg);
+      const posStatus = posStatusForPackage(pkg.packageStatus);
+
+      const commonValues = {
+        customer_name: invoice.customerName,
+        customer_phone: trendyolPhone(pkg),
+        delivery_address: trendyolAddress(pkg),
+        order_note: trendyolOrderNote(pkg),
+        payment_method: trendyolPaymentMethod(pkg),
+        external_restaurant_id: String(pkg.storeId),
+        external_status: pkg.packageStatus,
+        external_payload: pkg,
+        invoice_customer_type: invoice.invoiceCustomerType,
+        invoice_customer_name: invoice.invoiceCustomerName,
+        invoice_tax_number: invoice.taxNumber,
+        invoice_tax_office: invoice.taxOffice,
+        invoice_email: invoice.email,
+        invoice_address: invoice.address,
+        invoice_city: invoice.city,
+        invoice_district: invoice.district,
+      };
+
+      const { data: existing, error: existingError } = await supabaseAdmin
+        .from("pos_orders")
+        .select("id,status")
+        .eq("source", "trendyol")
+        .eq("external_order_id", externalOrderId)
+        .maybeSingle();
 
       if (existingError) throw existingError;
 
       if (existing) {
-        skipped += 1;
+        const updates: Record<string, unknown> = {
+          ...commonValues,
+        };
+
+        if (posStatus === "closed") {
+          updates.status = "closed";
+          updates.pos_stage = "completed";
+          updates.closed_at = new Date().toISOString();
+        }
+
+        if (posStatus === "cancelled") {
+          updates.status = "cancelled";
+          updates.pos_stage = "cancelled";
+          updates.cancelled_at = new Date().toISOString();
+          updates.cancel_reason = "Trendyol Go üzerinden iptal edildi";
+        }
+
+        const { error: updateError } = await supabaseAdmin
+          .from("pos_orders")
+          .update(updates)
+          .eq("id", existing.id);
+
+        if (updateError) throw updateError;
+
+        updated += 1;
         continue;
       }
 
@@ -262,10 +445,7 @@ export async function POST() {
         if (!menuItemId) {
           hasUnmatched = true;
           unmatched += 1;
-          unmatchedProducts.set(
-            String(line.productId),
-            line.name
-          );
+          unmatchedProducts.set(String(line.productId), line.name);
         }
 
         const activeItemCount =
@@ -282,7 +462,7 @@ export async function POST() {
         });
       }
 
-      if (rows.length === 0) {
+      if (!rows.length) {
         await supabaseAdmin.from("integration_events").insert({
           channel: "trendyol",
           event_type: "order.empty",
@@ -309,10 +489,7 @@ export async function POST() {
         });
       }
 
-      const subtotal = rows.reduce(
-        (sum, row) => sum + row.line_total,
-        0
-      );
+      const subtotal = rows.reduce((sum, row) => sum + row.line_total, 0);
 
       const sellerPromotionTotal = (pkg.promotions ?? []).reduce(
         (sum, promotion) =>
@@ -320,64 +497,48 @@ export async function POST() {
         0
       );
 
-      // Trendyol durumu external_status'ta tutulur.
-      // POS adisyonu yalnızca POS içinden kapatılır.
-      const orderStatus = "open";
-
-      const invoice = extractInvoiceData(pkg);
-
-      const { data: order, error: orderError } =
-        await supabaseAdmin
-          .from("pos_orders")
-          .insert({
-            receipt_number: `TGO-${externalOrderId}`,
-            order_type: "Paket",
-            customer_name: invoice.customerName,
-            order_note: pkg.customerNote || null,
-            subtotal,
-            discount_amount: sellerPromotionTotal,
-            total: Number(pkg.totalPrice || subtotal),
-            payment_method: trendyolPaymentMethod(pkg),
-            status: orderStatus,
-            source: "trendyol",
-            external_order_id: externalOrderId,
-            external_restaurant_id: String(pkg.storeId),
-            external_status: pkg.packageStatus,
-            external_payload: pkg,
-            restaurant_discount_amount: sellerPromotionTotal,
-            channel_net_amount: Number(pkg.totalPrice || subtotal),
-            invoice_customer_type: invoice.invoiceCustomerType,
-            invoice_customer_name: invoice.invoiceCustomerName,
-            invoice_tax_number: invoice.taxNumber,
-            invoice_tax_office: invoice.taxOffice,
-            invoice_email: invoice.email,
-            invoice_address: invoice.address,
-            invoice_city: invoice.city,
-            invoice_district: invoice.district,
-            invoice_type: null,
-            invoice_status: "none",
-            invoice_requested: false,
-            closed_at: null,
-          })
-          .select("id")
-          .single();
+      const { data: order, error: orderError } = await supabaseAdmin
+        .from("pos_orders")
+        .insert({
+          receipt_number: `TGO-${externalOrderId}`,
+          order_type: "Paket",
+          ...commonValues,
+          subtotal,
+          discount_amount: sellerPromotionTotal,
+          total: Number(pkg.totalPrice || subtotal),
+          status: posStatus,
+          source: "trendyol",
+          external_order_id: externalOrderId,
+          restaurant_discount_amount: sellerPromotionTotal,
+          channel_net_amount: Number(pkg.totalPrice || subtotal),
+          invoice_type: null,
+          invoice_status: "none",
+          invoice_requested: false,
+          closed_at: posStatus === "closed" ? new Date().toISOString() : null,
+          cancelled_at:
+            posStatus === "cancelled" ? new Date().toISOString() : null,
+          cancel_reason:
+            posStatus === "cancelled"
+              ? "Trendyol Go üzerinden iptal edildi"
+              : null,
+          pos_stage:
+            posStatus === "closed"
+              ? "completed"
+              : posStatus === "cancelled"
+                ? "cancelled"
+                : "new",
+        })
+        .select("id")
+        .single();
 
       if (orderError) throw orderError;
 
       const { error: itemsError } = await supabaseAdmin
         .from("pos_order_items")
-        .insert(
-          rows.map((row) => ({
-            order_id: order.id,
-            ...row,
-          }))
-        );
+        .insert(rows.map((row) => ({ order_id: order.id, ...row })));
 
       if (itemsError) {
-        await supabaseAdmin
-          .from("pos_orders")
-          .delete()
-          .eq("id", order.id);
+        await supabaseAdmin.from("pos_orders").delete().eq("id", order.id);
         throw itemsError;
       }
 
@@ -398,13 +559,10 @@ export async function POST() {
       ok: true,
       fetched: response.content?.length ?? 0,
       imported,
-      skipped,
+      updated,
       unmatched,
       unmatchedProducts: Array.from(unmatchedProducts.entries()).map(
-        ([productId, name]) => ({
-          productId,
-          name,
-        })
+        ([productId, name]) => ({ productId, name })
       ),
     });
   } catch (error) {
