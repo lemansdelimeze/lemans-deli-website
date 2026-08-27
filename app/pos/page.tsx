@@ -782,6 +782,8 @@ localStorage.setItem(
     setOnlineSettings(next);
     setSavingOnlineSettings(true);
 
+
+
     const { error } = await supabase
       .from("online_order_settings")
       .update({
@@ -904,72 +906,39 @@ localStorage.setItem(
   }
 
   async function acceptIncomingOrder(order: IncomingOrder) {
-    const paidOnline =
-      order.source === "trendyol" && order.payment_method !== "pending";
-
-    if (!paidOnline) {
-      // Ödeme bekleyen siparişlerde mevcut adisyon akışını aç.
-      await openIncomingOrder(order);
-      return;
-    }
-
-    const now = new Date().toISOString();
-
-    const { error } = await supabase
-      .from("pos_orders")
-      .update({
-        status: "closed",
-        closed_at: now,
-        pos_stage: "accepted",
-        card_amount: Number(order.total || 0),
-        cash_amount: 0,
-        meal_card_amount: 0,
-      })
-      .eq("id", order.id);
-
-    if (error) {
-      alert(error.message);
-      return;
-    }
-
-    const { error: stockError } = await supabase.rpc(
-      "apply_stock_for_pos_order",
-      { p_order_id: order.id }
-    );
-
-    if (stockError) {
-      alert(
-        `Sipariş kabul edildi ve kapandı; stok düşümü kontrol edilmeli: ${stockError.message}`
-      );
-    }
+    await setIncomingStage(order.id, "accepted");
 
     setNewOrderNotice(null);
     setChannelMessage(
-      `${sourceLabel(order.source)} ${order.receipt_number || `#${order.id}`} kabul edildi ve ödendi olarak kapatıldı.`
+      `${sourceLabel(order.source)} ${
+        order.receipt_number || `#${order.id}`
+      } kabul edildi.`
     );
+
     await loadData();
   }
 
-  async function setIncomingStage(
-  orderIdValue: number,
-  stage: "new" | "preparing" | "ready"
-) {
-  const { error } = await supabase
-    .from("pos_orders")
-    .update({ pos_stage: stage })
-    .eq("id", orderIdValue);
+   async function setIncomingStage(
+    orderIdValue: number,
+    stage: "new" | "accepted" | "preparing" | "ready" | "on_the_way"
+  ) {
+    const currentOrder = incomingOrders.find(
+      (order) => order.id === orderIdValue
+    );
 
-  if (error) {
-    alert(error.message);
-    return;
-  }
+    if (
+      currentOrder?.source === "yemeksepeti" &&
+      (stage === "accepted" || stage === "ready" || stage === "on_the_way")
+    ) {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
 
-  if (stage === "preparing" || stage === "ready") {
-    try {
-      const response = await fetch("/api/orders/status-email", {
+      const response = await fetch("/api/integrations/yemeksepeti/stage", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          Authorization: `Bearer ${session?.access_token || ""}`,
         },
         body: JSON.stringify({
           orderId: orderIdValue,
@@ -980,21 +949,44 @@ localStorage.setItem(
       const result = await response.json();
 
       if (!response.ok || !result.ok) {
-        console.error(
-          "Durum maili gönderilemedi:",
-          result.error
-        );
+        alert(result.error || "Yemeksepeti durumu güncellenemedi.");
+        return;
       }
-    } catch (emailError) {
-      console.error(
-        "Durum maili gönderilemedi:",
-        emailError
-      );
-    }
-  }
 
-  await loadData();
-}
+      await loadData();
+      return;
+    }
+
+    const { error } = await supabase
+      .from("pos_orders")
+      .update({ pos_stage: stage })
+      .eq("id", orderIdValue);
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    if (
+      currentOrder?.source === "web" &&
+      (stage === "preparing" || stage === "ready")
+    ) {
+      try {
+        await fetch("/api/orders/status-email", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            orderId: orderIdValue,
+            stage,
+          }),
+        });
+      } catch (emailError) {
+        console.error("Durum maili gönderilemedi:", emailError);
+      }
+    }
+
+    await loadData();
+  }
 
   const visibleItems = useMemo(() => {
     const category = categories.find((item) => item.id === activeCategoryId);
@@ -1952,28 +1944,37 @@ await loadData();
                         )}
                       </div>
 
-                      <div className="mt-3 grid grid-cols-3 gap-2">
-                        <button
-                          type="button"
-                          onClick={() => void setIncomingStage(order.id, "new")}
-                          className={`rounded-lg border px-2 py-2 text-[11px] font-bold ${stage === "new" ? "bg-slate-800 text-white" : "bg-white"}`}
-                        >
-                          Yeni
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => void setIncomingStage(order.id, "preparing")}
-                          className={`rounded-lg border px-2 py-2 text-[11px] font-bold ${stage === "preparing" ? "bg-amber-500 text-white" : "bg-white"}`}
-                        >
-                          Hazırlanıyor
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => void setIncomingStage(order.id, "ready")}
-                          className={`rounded-lg border px-2 py-2 text-[11px] font-bold ${stage === "ready" ? "bg-green-600 text-white" : "bg-white"}`}
-                        >
-                          Hazır
-                        </button>
+                                           <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-5">
+                        {[
+                          ["new", "Yeni"],
+                          ["accepted", "Kabul Edildi"],
+                          ["preparing", "Hazırlanıyor"],
+                          ["ready", "Hazır"],
+                          ["on_the_way", "Yolda"],
+                        ].map(([value, label]) => (
+                          <button
+                            key={value}
+                            type="button"
+                            onClick={() =>
+                              void setIncomingStage(
+                                order.id,
+                                value as
+                                  | "new"
+                                  | "accepted"
+                                  | "preparing"
+                                  | "ready"
+                                  | "on_the_way"
+                              )
+                            }
+                            className={`rounded-lg border px-2 py-2 text-[11px] font-bold ${
+                              stage === value
+                                ? "border-[#6e1f12] bg-[#6e1f12] text-white"
+                                : "bg-white"
+                            }`}
+                          >
+                            {label}
+                          </button>
+                        ))}
                       </div>
                     </article>
                   );
@@ -1981,7 +1982,7 @@ await loadData();
               </div>
             </section>
           )}
-
+ 
           <section className="mb-5 rounded-3xl border border-[#6e1f12]/10 bg-white p-4">
             <h2 className="mb-3 text-xl font-bold text-[#6e1f12]" style={{ fontFamily: BRAND_FONT }}>Masalar</h2>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-8">
