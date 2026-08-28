@@ -204,18 +204,29 @@ export async function POST(
   const configuredRemoteId = process.env.YEMEKSEPETI_REMOTE_ID;
 
   if (!configuredRemoteId || remoteId !== configuredRemoteId) {
-    return NextResponse.json(
-      { reason: "INVALID_REQUEST", message: "Geçersiz Remote ID." },
-      { status: 400 }
-    );
-  }
+  console.error("YS siparişi reddedildi: Remote ID", {
+    remoteId,
+    remoteIdConfigured: Boolean(configuredRemoteId),
+  });
 
-  if (!verifyMiddlewareJwt(request)) {
-    return NextResponse.json(
-      { reason: "UNAUTHORIZED", message: "Yetkilendirme doğrulanamadı." },
-      { status: 401 }
-    );
-  }
+  return NextResponse.json(
+    { reason: "INVALID_REQUEST", message: "Geçersiz Remote ID." },
+    { status: 400 }
+  );
+}
+
+if (!verifyMiddlewareJwt(request)) {
+  console.error("YS siparişi reddedildi: JWT", {
+    remoteId,
+    secretConfigured: Boolean(process.env.YEMEKSEPETI_MIDDLEWARE_SECRET),
+    authorizationPresent: Boolean(request.headers.get("authorization")),
+  });
+
+  return NextResponse.json(
+    { reason: "UNAUTHORIZED", message: "Yetkilendirme doğrulanamadı." },
+    { status: 401 }
+  );
+}
 
   try {
     const payload = (await request.json()) as DeliveryHeroOrder;
