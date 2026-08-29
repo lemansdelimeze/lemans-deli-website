@@ -48,6 +48,7 @@ type IncomingOrder = {
   source: string | null;
   external_order_id: string | null;
   external_status: string | null;
+  external_payload: unknown | null;
   pos_stage: string | null;
   created_at: string;
 };
@@ -208,7 +209,7 @@ export default function PosPage() {
       supabase.from("pos_orders").select("id,table_id,total").eq("status", "open"),
       supabase
         .from("pos_orders")
-        .select("id,receipt_number,order_type,table_id,customer_name,customer_phone,delivery_address,order_note,subtotal,discount_amount,total,payment_method,status,source,external_order_id,external_status,pos_stage,created_at")
+        .select("id,receipt_number,order_type,table_id,customer_name,customer_phone,delivery_address,order_note,subtotal,discount_amount,total,payment_method,status,source,external_order_id,external_status,external_payload,pos_stage,created_at")
         .eq("status", "open")
         .in("source", ["web", "trendyol", "yemeksepeti"])
         .order("created_at", { ascending: false }),
@@ -253,7 +254,7 @@ export default function PosPage() {
     const { data, error } = await supabase
       .from("pos_orders")
       .select(
-        "id,receipt_number,order_type,table_id,customer_name,customer_phone,delivery_address,order_note,subtotal,discount_amount,total,payment_method,status,source,external_order_id,external_status,pos_stage,created_at"
+        "id,receipt_number,order_type,table_id,customer_name,customer_phone,delivery_address,order_note,subtotal,discount_amount,total,payment_method,status,source,external_order_id,external_status,external_payload,pos_stage,created_at"
       )
       .eq("status", "open")
       .in("source", ["web", "trendyol", "yemeksepeti"])
@@ -851,16 +852,6 @@ localStorage.setItem(
   }
 
   async function openIncomingOrder(order: IncomingOrder) {
-    const { error: stageError } = await supabase
-      .from("pos_orders")
-      .update({ pos_stage: "accepted" })
-      .eq("id", order.id);
-
-    if (stageError) {
-      alert(stageError.message);
-      return;
-    }
-
     const { data, error } = await supabase
       .from("pos_order_items")
       .select("id,menu_item_id,product_name,quantity,portion_type,portion_label,weight_grams,unit_price")
@@ -1883,6 +1874,42 @@ await loadData();
                   const whatsapp = whatsappHref(order.customer_phone);
                   const maps = mapsHref(order.delivery_address);
                   const stage = order.pos_stage || "new";
+                  const yemeksepetiPayload =
+                    order.source === "yemeksepeti" &&
+                    order.external_payload &&
+                    typeof order.external_payload === "object"
+                      ? (order.external_payload as {
+                          preOrder?: boolean;
+                          payment?: { type?: string | null };
+                          comments?: { customerComment?: string | null };
+                          delivery?: {
+                            expectedDeliveryTime?: string | null;
+                            address?: { deliveryInstructions?: string | null };
+                          };
+                        })
+                      : null;
+                  const expectedDeliveryTime =
+                    yemeksepetiPayload?.delivery?.expectedDeliveryTime || null;
+                  const expectedDeliveryDate = expectedDeliveryTime
+                    ? new Date(expectedDeliveryTime)
+                    : null;
+                  const expectedDeliveryMillis = expectedDeliveryDate?.getTime();
+                  const expectedDeliveryIsValid = Number.isFinite(
+                    expectedDeliveryMillis
+                  );
+                  const remainingMinutes =
+                    expectedDeliveryIsValid && expectedDeliveryMillis !== undefined
+                    ? Math.round(
+                        (expectedDeliveryMillis - Date.now()) / 60_000
+                      )
+                    : null;
+                  const deliveryInstruction =
+                    yemeksepetiPayload?.delivery?.address?.deliveryInstructions ||
+                    yemeksepetiPayload?.comments?.customerComment ||
+                    null;
+                  const wantsCutlery = Boolean(
+                    deliveryInstruction && /çatal|bıçak|cutlery/i.test(deliveryInstruction)
+                  );
 
                   return (
                     <article
@@ -1925,13 +1952,55 @@ await loadData();
                           📍 {order.delivery_address}
                         </p>
                       )}
-                      {order.order_note && (
+                      {yemeksepetiPayload && (
+                        <div className="mt-3 rounded-xl border border-pink-200 bg-pink-50 px-3 py-3 text-sm leading-5">
+                          <p className="font-bold text-pink-900">
+                            Yemeksepeti operasyon bilgisi
+                          </p>
+                          <div className="mt-1 space-y-1 text-pink-950">
+                            {yemeksepetiPayload.preOrder && (
+                              <p>📅 Ön sipariş</p>
+                            )}
+                            {yemeksepetiPayload.payment?.type && (
+                              <p>💳 Ödeme: {yemeksepetiPayload.payment.type}</p>
+                            )}
+                            {expectedDeliveryIsValid && expectedDeliveryDate && (
+                              <p>
+                                ⏱ Hedef teslim: {expectedDeliveryDate.toLocaleString("tr-TR", {
+                                  day: "2-digit",
+                                  month: "2-digit",
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })}
+                                {remainingMinutes !== null &&
+                                  ` · ${
+                                    remainingMinutes >= 0
+                                      ? `${remainingMinutes} dk kaldı`
+                                      : `${Math.abs(remainingMinutes)} dk geçti`
+                                  }`}
+                              </p>
+                            )}
+                            {deliveryInstruction && (
+                              <p>📝 Teslimat talimatı: {deliveryInstruction}</p>
+                            )}
+                            {wantsCutlery && <p>🍴 Çatal / bıçak istiyor</p>}
+                          </div>
+                        </div>
+                      )}
+                      {order.source !== "yemeksepeti" && order.order_note && (
                         <p className="mt-2 whitespace-pre-line rounded-xl bg-amber-50 px-3 py-2 text-sm">
                           <strong>Not:</strong> {order.order_note}
                         </p>
                       )}
 
                       <div className="mt-4 flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => void openIncomingOrder(order)}
+                          className="rounded-xl border border-[#6e1f12] bg-white px-3 py-2 text-xs font-bold text-[#6e1f12]"
+                        >
+                          🧾 Ürünleri Gör
+                        </button>
                         {call && (
                           <a
                             href={call}
@@ -1994,7 +2063,7 @@ await loadData();
                           ["new", "Yeni"],
                           ["accepted", "Kabul Edildi"],
                           ["preparing", "Hazırlanıyor"],
-                          ["ready", "Hazır"],
+                          ["ready", "Kurye Bekliyor"],
                           ["on_the_way", "Yolda"],
                         ].map(([value, label]) => (
                           <button
