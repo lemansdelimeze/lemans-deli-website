@@ -81,6 +81,7 @@ function sourceLabel(source: string | null) {
   if (source === "web") return "WEB SİPARİŞİ";
   if (source === "trendyol") return "TRENDYOL GO";
   if (source === "yemeksepeti") return "YEMEKSEPETİ";
+  if (source === "pos") return "BEKLEYEN POS SİPARİŞİ";
   return "SİPARİŞ";
 }
 
@@ -88,6 +89,7 @@ function sourceBadgeClass(source: string | null) {
   if (source === "web") return "bg-emerald-100 text-emerald-800";
   if (source === "trendyol") return "bg-orange-100 text-orange-800";
   if (source === "yemeksepeti") return "bg-pink-100 text-pink-800";
+  if (source === "pos") return "bg-slate-100 text-slate-800";
   return "bg-slate-100 text-slate-700";
 }
 
@@ -211,7 +213,8 @@ export default function PosPage() {
         .from("pos_orders")
         .select("id,receipt_number,order_type,table_id,customer_name,customer_phone,delivery_address,order_note,subtotal,discount_amount,total,payment_method,status,source,external_order_id,external_status,external_payload,pos_stage,created_at")
         .eq("status", "open")
-        .in("source", ["web", "trendyol", "yemeksepeti"])
+        .in("source", ["web", "trendyol", "yemeksepeti", "pos"])
+        .in("order_type", ["Paket", "Gel-Al", "Gel Al"])
         .order("created_at", { ascending: false }),
       supabase
         .from("integration_accounts")
@@ -257,7 +260,8 @@ export default function PosPage() {
         "id,receipt_number,order_type,table_id,customer_name,customer_phone,delivery_address,order_note,subtotal,discount_amount,total,payment_method,status,source,external_order_id,external_status,external_payload,pos_stage,created_at"
       )
       .eq("status", "open")
-      .in("source", ["web", "trendyol", "yemeksepeti"])
+      .in("source", ["web", "trendyol", "yemeksepeti", "pos"])
+      .in("order_type", ["Paket", "Gel-Al", "Gel Al"])
       .order("created_at", { ascending: false });
 
     if (error) return;
@@ -910,8 +914,11 @@ localStorage.setItem(
   }
   
    async function completeIncomingOrder(order: IncomingOrder) {
+    const isPickup =
+      order.order_type === "Gel-Al" || order.order_type === "Gel Al";
+    const completionLabel = isPickup ? "teslim alındı" : "teslim edildi";
     const confirmed = window.confirm(
-      `${order.receipt_number || `#${order.id}`} teslim edildi mi? Sipariş kapatılacak.`
+      `${order.receipt_number || `#${order.id}`} ${completionLabel} mi? Sipariş kapatılacak.`
     );
 
     if (!confirmed) return;
@@ -934,7 +941,7 @@ localStorage.setItem(
     setChannelMessage(
       `${sourceLabel(order.source)} ${
         order.receipt_number || `#${order.id}`
-      } teslim edildi olarak kapatıldı.`
+      } ${completionLabel} olarak kapatıldı.`
     );
 
     await loadData();
@@ -1860,7 +1867,7 @@ await loadData();
                     Yeni Siparişler
                   </h2>
                   <p className="mt-1 text-xs opacity-50">
-                    Web, Trendyol Go ve ileride Yemeksepeti siparişleri burada toplanır.
+                    Web, POS, Trendyol Go ve Yemeksepeti siparişleri burada toplanır.
                   </p>
                 </div>
                 <span className="rounded-full bg-[#6e1f12] px-3 py-1.5 text-xs font-bold text-white">
@@ -1874,6 +1881,9 @@ await loadData();
                   const whatsapp = whatsappHref(order.customer_phone);
                   const maps = mapsHref(order.delivery_address);
                   const stage = order.pos_stage || "new";
+                  const isPickup =
+                    order.order_type === "Gel-Al" ||
+                    order.order_type === "Gel Al";
                   const yemeksepetiPayload =
                     order.source === "yemeksepeti" &&
                     order.external_payload &&
@@ -2037,13 +2047,13 @@ await loadData();
                           ✓ Kabul Et
                         </button>
 
-<button
-  type="button"
-  onClick={() => void completeIncomingOrder(order)}
-  className="rounded-xl border border-green-700 bg-green-700 px-3 py-2 text-xs font-bold text-white"
->
-  ✓ Teslim Edildi · Kapat
-</button>
+                        <button
+                          type="button"
+                          onClick={() => void completeIncomingOrder(order)}
+                          className="rounded-xl border border-green-700 bg-green-700 px-3 py-2 text-xs font-bold text-white"
+                        >
+                          ✓ {isPickup ? "Teslim Alındı" : "Teslim Edildi"} · Kapat
+                        </button>
 
 
                         {canCancelOrder && order.source === "web" && (
@@ -2058,13 +2068,13 @@ await loadData();
                         )}
                       </div>
 
-                                           <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-5">
+                      <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-5">
                         {[
                           ["new", "Yeni"],
                           ["accepted", "Kabul Edildi"],
                           ["preparing", "Hazırlanıyor"],
-                          ["ready", "Kurye Bekliyor"],
-                          ["on_the_way", "Yolda"],
+                          ["ready", isPickup ? "Hazır" : "Kurye Bekliyor"],
+                          ...(!isPickup ? [["on_the_way", "Yolda"]] : []),
                         ].map(([value, label]) => (
                           <button
                             key={value}
