@@ -172,7 +172,7 @@ export async function POST(request: NextRequest) {
       body.stage === "accepted"
         ? {
             remoteOrderId: String(order.id),
-            status: "accepted",
+            status: "order_accepted",
             expectedDeliveryTime:
               payload.delivery?.expectedDeliveryTime ||
               new Date(Date.now() + 45 * 60 * 1000).toISOString(),
@@ -183,7 +183,7 @@ export async function POST(request: NextRequest) {
             }
           : {
               remoteOrderId: String(order.id),
-              status: "picked_up",
+              status: "order_picked_up",
             };
 
     const callbackResponse = await fetch(callbackUrl, {
