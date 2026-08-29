@@ -1002,7 +1002,7 @@ localStorage.setItem(
       (stage === "accepted" || stage === "ready" || stage === "on_the_way");
     const notifyTrendyol =
       currentOrder?.source === "trendyol" &&
-      (stage === "accepted" || stage === "on_the_way");
+      (stage === "accepted" || stage === "ready" || stage === "on_the_way");
 
     if (notifyYemeksepeti || notifyTrendyol) {
       const {

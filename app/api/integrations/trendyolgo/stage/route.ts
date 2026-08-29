@@ -8,7 +8,7 @@ import {
 
 export const runtime = "nodejs";
 
-type Stage = "accepted" | "on_the_way" | "delivered";
+type Stage = "accepted" | "ready" | "on_the_way" | "delivered";
 
 type TrendyolPayload = {
   id?: string;
@@ -59,7 +59,9 @@ export async function POST(request: NextRequest) {
 
     if (
       !body.orderId ||
-      !["accepted", "on_the_way", "delivered"].includes(body.stage || "")
+      !["accepted", "ready", "on_the_way", "delivered"].includes(
+        body.stage || ""
+      )
     ) {
       return NextResponse.json(
         { ok: false, error: "GeÃ§ersiz Trendyol Go sipariÅŸ aÅŸamasÄ±." },
@@ -115,6 +117,11 @@ export async function POST(request: NextRequest) {
         method: "PUT",
         body: JSON.stringify({ packageId, preparationTime }),
       });
+    } else if (body.stage === "ready") {
+      await trendyolGoRequest(
+        `${packagePath}/${encodeURIComponent(packageId)}/invoiced`,
+        { method: "PUT" }
+      );
     } else if (body.stage === "on_the_way") {
       await trendyolGoRequest(
         `${packagePath}/${encodeURIComponent(packageId)}/manual-shipped`,
@@ -130,14 +137,16 @@ export async function POST(request: NextRequest) {
     const updates: Record<string, unknown> =
       body.stage === "accepted"
         ? { pos_stage: "accepted", external_status: "Picked" }
-        : body.stage === "on_the_way"
-          ? { pos_stage: "on_the_way", external_status: "Shipped" }
-          : {
-              status: "closed",
-              pos_stage: "delivered",
-              external_status: "Delivered",
-              closed_at: new Date().toISOString(),
-            };
+        : body.stage === "ready"
+          ? { pos_stage: "ready", external_status: "Invoiced" }
+          : body.stage === "on_the_way"
+            ? { pos_stage: "on_the_way", external_status: "Shipped" }
+            : {
+                status: "closed",
+                pos_stage: "delivered",
+                external_status: "Delivered",
+                closed_at: new Date().toISOString(),
+              };
 
     const { error: updateError } = await supabaseAdmin
       .from("pos_orders")
