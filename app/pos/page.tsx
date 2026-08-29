@@ -938,6 +938,33 @@ localStorage.setItem(
 
     if (!confirmed) return;
 
+    if (order.source === "trendyol") {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      const response = await fetch("/api/integrations/trendyolgo/stage", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session?.access_token || ""}`,
+        },
+        body: JSON.stringify({ orderId: order.id, stage: "delivered" }),
+      });
+      const result = await response.json();
+
+      if (!response.ok || !result.ok) {
+        alert([result.error, result.response].filter(Boolean).join("\n\n"));
+        return;
+      }
+
+      setChannelMessage(
+        `TRENDYOL GO ${order.receipt_number || `#${order.id}`} teslim edildi olarak bildirildi.`
+      );
+      await loadData();
+      return;
+    }
+
     const { error } = await supabase
       .from("pos_orders")
       .update({
@@ -970,15 +997,23 @@ localStorage.setItem(
       (order) => order.id === orderIdValue
     );
 
-    if (
+    const notifyYemeksepeti =
       currentOrder?.source === "yemeksepeti" &&
-      (stage === "accepted" || stage === "ready" || stage === "on_the_way")
-    ) {
+      (stage === "accepted" || stage === "ready" || stage === "on_the_way");
+    const notifyTrendyol =
+      currentOrder?.source === "trendyol" &&
+      (stage === "accepted" || stage === "on_the_way");
+
+    if (notifyYemeksepeti || notifyTrendyol) {
       const {
         data: { session },
       } = await supabase.auth.getSession();
 
-      const response = await fetch("/api/integrations/yemeksepeti/stage", {
+      const response = await fetch(
+        notifyYemeksepeti
+          ? "/api/integrations/yemeksepeti/stage"
+          : "/api/integrations/trendyolgo/stage",
+        {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -987,8 +1022,10 @@ localStorage.setItem(
         body: JSON.stringify({
           orderId: orderIdValue,
           stage,
+          preparationTime: Number(onlineSettings?.prep_time_max || 30),
         }),
-      });
+        }
+      );
 
       const result = await response.json();
 
