@@ -203,6 +203,12 @@ export async function POST(
   const { remoteId } = await params;
   const configuredRemoteId = process.env.YEMEKSEPETI_REMOTE_ID;
 
+console.info("YS inbound kontrolü", {
+  remoteId,
+  remoteIdMatches: remoteId === configuredRemoteId,
+  jwtValid: verifyMiddlewareJwt(request),
+});
+
   if (!configuredRemoteId || remoteId !== configuredRemoteId) {
   console.error("YS siparişi reddedildi: Remote ID", {
     remoteId,
