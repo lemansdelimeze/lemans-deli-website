@@ -112,6 +112,21 @@ function mapsHref(address: string | null) {
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
 }
 
+function portionWeightGrams(portion?: string | null) {
+  const match = portion?.match(/(\d+(?:[.,]\d+)?)\s*(?:gr|g)\b/i);
+  const grams = match ? Number(match[1].replace(",", ".")) : NaN;
+  return Number.isFinite(grams) && grams > 0 ? grams : 1000;
+}
+
+function weightPriceLabel(item: MenuItem) {
+  const grams = portionWeightGrams(item.portion);
+  return grams === 1000 ? "Kg fiyatı" : `${grams} gr fiyatı`;
+}
+
+function weightedSalePrice(item: MenuItem, grams: number) {
+  return ((item.price ?? 0) * grams) / portionWeightGrams(item.portion);
+}
+
 
 const VAPID_PUBLIC_KEY =
   process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ||
@@ -1045,7 +1060,9 @@ localStorage.setItem(
   const calculatedWeightPrice = useMemo(() => {
     if (!weightItem) return 0;
     const grams = Number(weightInput.replace(",", "."));
-    return Number.isFinite(grams) && grams > 0 ? ((weightItem.price ?? 0) * grams) / 1000 : 0;
+    return Number.isFinite(grams) && grams > 0
+      ? weightedSalePrice(weightItem, grams)
+      : 0;
   }, [weightInput, weightItem]);
 
   async function selectTable(table: PosTable) {
@@ -1115,7 +1132,7 @@ localStorage.setItem(
       lineId: `${weightItem.id}-weight-${Date.now()}`,
       quantity: 1,
       portionType: "weight",
-      unitPrice: ((weightItem.price ?? 0) * grams) / 1000,
+      unitPrice: weightedSalePrice(weightItem, grams),
       displayPortion: `${grams} gr`,
       weightGrams: grams,
     }]);
@@ -2145,7 +2162,10 @@ await loadData();
                         <div className="flex-1">
                           <p className="font-bold text-[#6e1f12]" style={{ fontFamily: BRAND_FONT }}>{nameOf(item)}</p>
                           {item.portion && <p className="mt-1 text-sm opacity-55">{item.portion}</p>}
-                          <p className="mt-3 text-lg font-bold">{money(item.price ?? 0)} ₺{isWeight ? " / kg" : ""}</p>
+                          <p className="mt-3 text-lg font-bold">
+                            {money(item.price ?? 0)} ₺
+                            {isWeight ? ` / ${weightPriceLabel(item).replace(" fiyatı", "")}` : ""}
+                          </p>
                         </div>
                         {isPortion ? (
                           <div className="mt-4 grid grid-cols-2 gap-2">
@@ -2309,7 +2329,17 @@ await loadData();
           </div>
         )}
 
-        {weightItem && <WeightModal item={weightItem} grams={weightInput} calculatedPrice={calculatedWeightPrice} onGramsChange={setWeightInput} onCancel={() => { setWeightItem(null); setWeightInput(""); }} onAdd={addWeight} />}
+        {weightItem && (
+          <WeightModal
+            item={weightItem}
+            grams={weightInput}
+            calculatedPrice={calculatedWeightPrice}
+            baseWeightGrams={portionWeightGrams(weightItem.portion)}
+            onGramsChange={setWeightInput}
+            onCancel={() => { setWeightItem(null); setWeightInput(""); }}
+            onAdd={addWeight}
+          />
+        )}
         {paymentOpen && <PaymentModal subtotal={subtotal} discountAmount={discountAmount} discountLabel={discountLabel} total={total} payment={payment} cash={cash} card={card} mealCard={mealCard} internalReason={internalReason} printAfterClose={printAfterClose} saving={saving} onPaymentChange={setPayment} onCashChange={setCash} onCardChange={setCard} onMealCardChange={setMealCard} onInternalReasonChange={setInternalReason} onPrintAfterCloseChange={setPrintAfterClose} onCancel={() => setPaymentOpen(false)} onClose={() => void closeOrder()} />}
         <Receipt receiptNumber={printedReceipt} orderLabel={printedOrderLabel} paymentLabel={printedPayment} cart={printedCart} subtotal={printedSubtotal} discount={printedDiscount} discountLabel={printedDiscountLabel} total={printedTotal} />
       </main>
