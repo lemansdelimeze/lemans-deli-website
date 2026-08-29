@@ -905,7 +905,7 @@ localStorage.setItem(
     window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
   }
 
-  async function acceptIncomingOrder(order: IncomingOrder) {
+    async function acceptIncomingOrder(order: IncomingOrder) {
     await setIncomingStage(order.id, "accepted");
 
     setNewOrderNotice(null);
@@ -913,6 +913,37 @@ localStorage.setItem(
       `${sourceLabel(order.source)} ${
         order.receipt_number || `#${order.id}`
       } kabul edildi.`
+    );
+
+    await loadData();
+  }
+  
+   async function completeIncomingOrder(order: IncomingOrder) {
+    const confirmed = window.confirm(
+      `${order.receipt_number || `#${order.id}`} teslim edildi mi? Sipariş kapatılacak.`
+    );
+
+    if (!confirmed) return;
+
+    const { error } = await supabase
+      .from("pos_orders")
+      .update({
+        status: "closed",
+        pos_stage: "delivered",
+        closed_at: new Date().toISOString(),
+      })
+      .eq("id", order.id)
+      .eq("status", "open");
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    setChannelMessage(
+      `${sourceLabel(order.source)} ${
+        order.receipt_number || `#${order.id}`
+      } teslim edildi olarak kapatıldı.`
     );
 
     await loadData();
@@ -1936,6 +1967,16 @@ await loadData();
                         >
                           ✓ Kabul Et
                         </button>
+
+<button
+  type="button"
+  onClick={() => void completeIncomingOrder(order)}
+  className="rounded-xl border border-green-700 bg-green-700 px-3 py-2 text-xs font-bold text-white"
+>
+  ✓ Teslim Edildi · Kapat
+</button>
+
+
                         {canCancelOrder && order.source === "web" && (
                           <button
                             type="button"
