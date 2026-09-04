@@ -5,7 +5,8 @@ import { supabaseAdmin } from "../../../../lib/supabaseAdmin";
 type QuoteItem = {
   menuItemId: number;
   quantity: number;
-  portionType?: "unit" | "half";
+  portionType?: "unit" | "half" | "weight";
+  weightGrams?: number | null;
 };
 
 type QuoteBody = {
@@ -20,27 +21,26 @@ export async function POST(request: NextRequest) {
 
     const requestedLines = new Map<
       string,
-      { menuItemId: number; quantity: number; portionType: "unit" | "half" }
+      { menuItemId: number; quantity: number; portionType: "unit" | "half" | "weight"; weightGrams: number | null }
     >();
 
     for (const row of body.items ?? []) {
       const id = Number(row.menuItemId);
       const quantity = Number(row.quantity);
-      const portionType = row.portionType === "half" ? "half" : "unit";
+      const portionType = row.portionType === "half" ? "half" : row.portionType === "weight" ? "weight" : "unit";
+      const weightGrams = portionType === "weight" ? Number(row.weightGrams) : null;
 
       if (
-        Number.isInteger(id) &&
-        id > 0 &&
-        Number.isInteger(quantity) &&
-        quantity > 0 &&
-        quantity <= 20
+        Number.isInteger(id) && id > 0 && Number.isInteger(quantity) && quantity > 0 && quantity <= 20 &&
+        (portionType !== "weight" || [50, 100, 250, 500].includes(weightGrams ?? 0))
       ) {
-        const key = `${id}-${portionType}`;
+        const key = `${id}-${portionType}-${weightGrams ?? ""}`;
         const existing = requestedLines.get(key);
 
         requestedLines.set(key, {
           menuItemId: id,
           portionType,
+          weightGrams,
           quantity: Math.min(20, (existing?.quantity ?? 0) + quantity),
         });
       }
@@ -141,8 +141,15 @@ export async function POST(request: NextRequest) {
         );
       }
 
+      const weightAllowed = categorySlug === "peynir" || categorySlug === "sarkuteri";
+      if (requestedLine.portionType === "weight" && !weightAllowed) {
+        return NextResponse.json({ ok: false, error: "Bu ürün gramajla satılamaz." }, { status: 400 });
+      }
+
       const unitPrice =
-        basePrice * (requestedLine.portionType === "half" ? 0.5 : 1);
+        requestedLine.portionType === "half" ? basePrice * 0.5 :
+        requestedLine.portionType === "weight" && requestedLine.weightGrams ? basePrice * (requestedLine.weightGrams / 50) :
+        basePrice;
 
       subtotal += unitPrice * requestedLine.quantity;
     }
