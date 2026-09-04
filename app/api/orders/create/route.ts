@@ -175,7 +175,7 @@ async function sendOrderConfirmationEmail(args: {
   lines: Array<{
     product_name: string;
     quantity: number;
-    portion_type: "unit" | "half";
+    portion_type: "unit" | "half" | "weight";
     portion_label: string | null;
     unit_price: number;
     line_total: number;
