@@ -58,12 +58,13 @@ type GroupedCategory = {
   items: MenuItem[];
 };
 
-type CartPortionType = "unit" | "half";
+type CartPortionType = "unit" | "half" | "weight";
 
 type CartItem = {
   item: MenuItem;
   quantity: number;
   portionType: CartPortionType;
+  weightGrams: number | null;
   rowKey: string;
 };
 
@@ -545,6 +546,7 @@ export default function MenuPage() {
             menuItemId: row.item.id,
             quantity: row.quantity,
             portionType: row.portionType,
+            weightGrams: row.weightGrams,
           })),
         }),
       });
@@ -767,7 +769,20 @@ export default function MenuPage() {
 
   function cartUnitPrice(row: CartItem) {
     const base = Number(row.item.price || 0);
-    return row.portionType === "half" ? base * 0.5 : base;
+    if (row.portionType === "half") return base * 0.5;
+    if (row.portionType === "weight" && row.weightGrams) {
+      return base * (row.weightGrams / 50);
+    }
+    return base;
+  }
+
+  function cartPortionLabel(row: CartItem) {
+    if (row.portionType === "weight" && row.weightGrams) {
+      return `${row.weightGrams} gr`;
+    }
+    return row.portionType === "half"
+      ? halfPortionLabel(row.item.portion)
+      : row.item.portion || "";
   }
 
   function halfPortionLabel(portion: string | null) {
@@ -797,7 +812,8 @@ export default function MenuPage() {
 
   function addToCart(
     item: MenuItem,
-    portionType: CartPortionType = "unit"
+    portionType: CartPortionType = "unit",
+    weightGrams: number | null = null
   ) {
     if (!acceptingOrders) {
       setOrderError(
@@ -813,7 +829,7 @@ export default function MenuPage() {
 
     if (!item.price || item.price <= 0) return;
 
-    const rowKey = `${item.id}-${portionType}`;
+    const rowKey = `${item.id}-${portionType}-${weightGrams ?? ""}`;
 
     setCart((current) => {
       const existing = current.find((row) => row.rowKey === rowKey);
@@ -826,7 +842,7 @@ export default function MenuPage() {
         );
       }
 
-      return [...current, { item, quantity: 1, portionType, rowKey }];
+      return [...current, { item, quantity: 1, portionType, weightGrams, rowKey }];
     });
   }
 
@@ -932,6 +948,7 @@ export default function MenuPage() {
             menuItemId: row.item.id,
             quantity: row.quantity,
             portionType: row.portionType,
+            weightGrams: row.weightGrams,
           })),
         }),
       });
@@ -1349,10 +1366,8 @@ export default function MenuPage() {
                               {getProductName(row.item, language)}
                             </p>
                             <p className="mt-1 text-xs opacity-50">
-                              {row.portionType === "half"
-                                ? halfPortionLabel(row.item.portion)
-                                : row.item.portion || ""}
-                              {(row.item.portion || row.portionType === "half") ? " · " : ""}
+                              {cartPortionLabel(row)}
+                              {cartPortionLabel(row) ? " · " : ""}
                               {cartUnitPrice(row).toLocaleString("tr-TR")} ₺
                             </p>
                           </div>
@@ -1665,7 +1680,11 @@ function CategoryProducts({
   language: Language;
   openProductId: number | null;
   setOpenProductId: (id: number | null) => void;
-  onAddToCart: (item: MenuItem, portionType?: CartPortionType) => void;
+  onAddToCart: (
+    item: MenuItem,
+    portionType?: CartPortionType,
+    weightGrams?: number | null
+  ) => void;
   orderingAvailable: boolean;
   orderingReason: string | null;
 }) {
@@ -1745,6 +1764,27 @@ function CategoryProducts({
 
 
             {item.price !== null && item.price > 0 && (
+              (categorySlug === "peynir" || categorySlug === "sarkuteri") ? (
+                <div className="px-4 pb-4 md:px-6">
+                  <p className="mb-2 text-xs font-semibold text-[#6e1f12]/70">
+                    {language === "tr" ? "Gramaj seçin" : language === "ru" ? "Выберите вес" : "Choose weight"}
+                  </p>
+                  <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+                    {[50, 100, 250, 500].map((weightGrams) => (
+                      <button
+                        key={weightGrams}
+                        type="button"
+                        disabled={!orderingAvailable}
+                        title={!orderingAvailable ? orderingReason || "" : ""}
+                        onClick={() => onAddToCart(item, "weight", weightGrams)}
+                        className="rounded-xl border border-[#6e1f12]/15 bg-[#6e1f12]/5 px-4 py-2.5 text-sm font-bold text-[#6e1f12] transition hover:bg-[#6e1f12] hover:text-white disabled:cursor-not-allowed disabled:opacity-45"
+                      >
+                        + {weightGrams} gr · {(Number(item.price) * weightGrams / 50).toLocaleString("tr-TR")} ₺
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : (
               <div className="flex flex-col gap-2 px-4 pb-4 sm:flex-row md:px-6">
                 <button
                   type="button"
@@ -1784,6 +1824,7 @@ function CategoryProducts({
                   </button>
                 )}
               </div>
+              )
             )}
 
             {productOpen && (
