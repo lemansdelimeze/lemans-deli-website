@@ -1764,7 +1764,7 @@ function CategoryProducts({
 
 
             {item.price !== null && item.price > 0 && (
-              categorySlug === "peynir" ? (
+              false ? (
                 <div className="px-4 pb-4 md:px-6">
                   <p className="mb-2 text-xs font-semibold text-[#6e1f12]/70">
                     {language === "tr" ? "Gramaj seçin" : language === "ru" ? "Выберите вес" : "Choose weight"}
