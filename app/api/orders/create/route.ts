@@ -6,7 +6,8 @@ import { sendPosPush } from "../../../../lib/sendPosPush";
 type RequestedItem = {
   menuItemId: number;
   quantity: number;
-  portionType?: "unit" | "half";
+  portionType?: "unit" | "half" | "weight";
+  weightGrams?: number | null;
 };
 
 type CreateOrderBody = {
