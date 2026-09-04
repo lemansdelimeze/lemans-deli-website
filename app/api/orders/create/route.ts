@@ -478,23 +478,26 @@ export async function POST(request: NextRequest) {
 
     const requestedLines = new Map<
       string,
-      { menuItemId: number; quantity: number; portionType: "unit" | "half" }
+      { menuItemId: number; quantity: number; portionType: "unit" | "half" | "weight"; weightGrams: number | null }
     >();
 
     for (const row of requested) {
       const id = Number(row?.menuItemId);
       const quantity = Number(row?.quantity);
-      const portionType = row?.portionType === "half" ? "half" : "unit";
+      const portionType = row?.portionType === "half" ? "half" : row?.portionType === "weight" ? "weight" : "unit";
+      const weightGrams = portionType === "weight" ? Number(row?.weightGrams) : null;
 
       if (!Number.isInteger(id) || id <= 0) continue;
       if (!Number.isInteger(quantity) || quantity < 1 || quantity > 20) continue;
+      if (portionType === "weight" && ![50, 100, 250, 500].includes(weightGrams ?? 0)) continue;
 
-      const key = `${id}-${portionType}`;
+      const key = `${id}-${portionType}-${weightGrams ?? ""}`;
       const existing = requestedLines.get(key);
 
       requestedLines.set(key, {
         menuItemId: id,
         portionType,
+        weightGrams,
         quantity: Math.min(20, (existing?.quantity ?? 0) + quantity),
       });
     }
@@ -584,12 +587,15 @@ export async function POST(request: NextRequest) {
         );
       }
 
+      const weightAllowed = categorySlug === "peynir" || categorySlug === "sarkuteri";
+      if (requestedLine.portionType === "weight" && !weightAllowed) {
+        throw new Error(`${product.name_tr || product.name || "Ürün"} gramajla satılamaz.`);
+      }
+
       const portionType = requestedLine.portionType;
-      const unitPrice = basePrice * (portionType === "half" ? 0.5 : 1);
-      const portionLabel =
-        portionType === "half"
-          ? halfPortionLabel(product.portion || null)
-          : product.portion || null;
+      const weightGrams = portionType === "weight" ? requestedLine.weightGrams : null;
+      const unitPrice = portionType === "half" ? basePrice * 0.5 : portionType === "weight" && weightGrams ? basePrice * (weightGrams / 50) : basePrice;
+      const portionLabel = portionType === "half" ? halfPortionLabel(product.portion || null) : portionType === "weight" && weightGrams ? `${weightGrams} gr` : product.portion || null;
 
       return {
         menu_item_id: Number(product.id),
@@ -597,7 +603,7 @@ export async function POST(request: NextRequest) {
         quantity: requestedLine.quantity,
         portion_type: portionType,
         portion_label: portionLabel,
-        weight_grams: null,
+        weight_grams: weightGrams,
         unit_price: unitPrice,
         line_total: unitPrice * requestedLine.quantity,
       };
