@@ -861,7 +861,7 @@ localStorage.setItem(
         );
       }
 
-      await loadData();
+await loadIncomingOrdersOnly();
     } catch (error) {
       setChannelMessage(
         error instanceof Error ? error.message : "Trendyol Go sorgulanamadı."
