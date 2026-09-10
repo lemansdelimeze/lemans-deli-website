@@ -160,8 +160,7 @@ export default function PosPage() {
   const [integrationAccounts, setIntegrationAccounts] = useState<IntegrationAccount[]>([]);
   const [channelMessage, setChannelMessage] = useState("");
   const [syncingTrendyol, setSyncingTrendyol] = useState(false);
-  const [trendyolAutoSync, setTrendyolAutoSync] = useState(false);
-  const [newOrderNotice, setNewOrderNotice] = useState<IncomingOrder | null>(null);
+const [trendyolAutoSync, setTrendyolAutoSync] = useState(true);  const [newOrderNotice, setNewOrderNotice] = useState<IncomingOrder | null>(null);
   const [onlineSettings, setOnlineSettings] =
     useState<OnlineOrderSettings | null>(null);
   const [savingOnlineSettings, setSavingOnlineSettings] = useState(false);
@@ -518,15 +517,17 @@ useEffect(() => {
     };
   }, [loadIncomingOrdersOnly]);
 
-  useEffect(() => {
-    if (!loggedIn || !trendyolAutoSync) return;
+useEffect(() => {
+  if (!loggedIn || !trendyolAutoSync) return;
 
-    const timer = window.setInterval(() => {
-      void syncTrendyol(false);
-}, 6_000);
+  void syncTrendyol(false);
 
-    return () => window.clearInterval(timer);
-  }, [trendyolAutoSync, loggedIn]);
+  const timer = window.setInterval(() => {
+    void syncTrendyol(false);
+  }, 60_000);
+
+  return () => window.clearInterval(timer);
+}, [trendyolAutoSync, loggedIn]);
 
   useEffect(() => {
     if (alarmRepeatTimerRef.current) {
