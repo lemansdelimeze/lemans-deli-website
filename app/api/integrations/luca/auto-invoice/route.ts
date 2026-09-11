@@ -26,6 +26,31 @@ async function event(orderId: number, eventType: string, status: string, message
   });
 }
 
+function isOnlinePlatformPayment(order: {
+  source: string | null;
+  payment_method: string | null;
+  external_payload: unknown;
+}) {
+  if (!["trendyol", "yemeksepeti"].includes(String(order.source))) {
+    return false;
+  }
+
+  const payloadPayment =
+    order.external_payload && typeof order.external_payload === "object"
+      ? (order.external_payload as { payment?: { type?: unknown; paymentType?: unknown } }).payment
+      : null;
+  const value = [
+    order.payment_method,
+    payloadPayment?.type,
+    payloadPayment?.paymentType,
+  ]
+    .filter((item): item is string => typeof item === "string")
+    .join(" ")
+    .toLocaleLowerCase("tr-TR");
+
+  return value.includes("online") || value.includes("pay_with_card");
+}
+
 export async function POST(request: NextRequest) {
   const requestSupabase = supabaseForRequest(request);
   if (!requestSupabase) {
@@ -64,7 +89,7 @@ export async function POST(request: NextRequest) {
 
   const { data: order, error: orderError } = await supabaseAdmin
     .from("pos_orders")
-    .select("id,receipt_number,customer_name,customer_phone,delivery_address,total,status,invoice_status")
+    .select("id,receipt_number,customer_name,customer_phone,delivery_address,total,status,source,payment_method,external_payload,invoice_status")
     .eq("id", body.orderId)
     .single();
 
@@ -73,6 +98,9 @@ export async function POST(request: NextRequest) {
   }
   if (order.status !== "closed") {
     return NextResponse.json({ ok: false, error: "Sadece kapanmış sipariş faturalandırılabilir." }, { status: 409 });
+  }
+  if (!isOnlinePlatformPayment(order)) {
+    return NextResponse.json({ ok: true, status: "out_of_scope" });
   }
   if (order.invoice_status === "sent") {
     return NextResponse.json({ ok: true, status: "already_sent" });
