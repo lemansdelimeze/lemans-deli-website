@@ -926,7 +926,7 @@ await loadIncomingOrdersOnly();
       } kabul edildi.`
     );
 
-    await loadData();
+    await loadIncomingOrdersOnly();
   }
   
    async function completeIncomingOrder(order: IncomingOrder) {
