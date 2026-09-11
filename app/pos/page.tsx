@@ -482,10 +482,14 @@ useEffect(() => {
           } else {
             void loadData();
           }
+        }
+      )
+      .subscribe();
 
     return () => {
       void supabase.removeChannel(channel);
     };
+
   }, [loadData, loggedIn]);
 
   useEffect(() => {
@@ -2385,6 +2389,8 @@ await loadData();
         {paymentOpen && <PaymentModal subtotal={subtotal} discountAmount={discountAmount} discountLabel={discountLabel} total={total} payment={payment} cash={cash} card={card} mealCard={mealCard} internalReason={internalReason} printAfterClose={printAfterClose} saving={saving} onPaymentChange={setPayment} onCashChange={setCash} onCardChange={setCard} onMealCardChange={setMealCard} onInternalReasonChange={setInternalReason} onPrintAfterCloseChange={setPrintAfterClose} onCancel={() => setPaymentOpen(false)} onClose={() => void closeOrder()} />}
         <Receipt receiptNumber={printedReceipt} orderLabel={printedOrderLabel} paymentLabel={printedPayment} cart={printedCart} subtotal={printedSubtotal} discount={printedDiscount} discountLabel={printedDiscountLabel} total={printedTotal} />
       </main>
+
     </>
+
   );
 }
