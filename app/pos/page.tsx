@@ -1014,7 +1014,9 @@ await loadIncomingOrdersOnly();
       return;
     }
 
-    void requestLucaAutoInvoice(order.id);
+    if (order.source === "yemeksepeti") {
+      void requestLucaAutoInvoice(order.id);
+    }
 
     setChannelMessage(
       `${sourceLabel(order.source)} ${
@@ -1498,8 +1500,6 @@ await loadData();
       if (stockError) {
         throw new Error(`Adisyon kapandı fakat stok düşürülemedi: ${stockError.message}`);
       }
-
-      void requestLucaAutoInvoice(targetOrderId);
 
       preparePrint(label, paymentLabel, nextReceipt);
       setPaymentOpen(false);
@@ -2036,7 +2036,7 @@ await loadData();
                           <p className="text-xl font-bold text-[#6e1f12]">
                             {money(Number(order.total || 0))} ₺
                           </p>
-                          {order.source === "trendyol" && order.payment_method !== "pending" && (
+                          {order.source === "trendyol" && order.payment_method === "Online Kart Ödemesi" && (
                             <span className="mt-1 inline-flex rounded-full bg-green-100 px-2.5 py-1 text-[10px] font-bold text-green-800">
                               ✓ ONLINE ÖDENDİ
                             </span>
