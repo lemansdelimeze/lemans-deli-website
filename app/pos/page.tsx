@@ -473,11 +473,15 @@ useEffect(() => {
               });
             }
           }
-
-          void loadData();
-        }
-      )
-      .subscribe();
+          if (
+            ["web", "trendyol", "yemeksepeti", "pos"].includes(
+              String(row?.source)
+            )
+          ) {
+            void loadIncomingOrdersOnly();
+          } else {
+            void loadData();
+          }
 
     return () => {
       void supabase.removeChannel(channel);
