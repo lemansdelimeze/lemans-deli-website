@@ -924,7 +924,31 @@ await loadIncomingOrdersOnly();
     window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
   }
 
-    async function acceptIncomingOrder(order: IncomingOrder) {
+  async function requestLucaAutoInvoice(orderIdValue: number) {
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      const response = await fetch("/api/integrations/luca/auto-invoice", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session?.access_token || ""}`,
+        },
+        body: JSON.stringify({ orderId: orderIdValue }),
+      });
+      const result = await response.json();
+
+      if (!response.ok || !result.ok) {
+        console.error("LUCA otomatik fatura gönderilemedi:", result.error || result);
+      }
+    } catch (error) {
+      console.error("LUCA otomatik fatura isteği gönderilemedi:", error);
+    }
+  }
+
+  async function acceptIncomingOrder(order: IncomingOrder) {
     await setIncomingStage(order.id, "accepted");
 
     setNewOrderNotice(null);
@@ -970,6 +994,7 @@ await loadIncomingOrdersOnly();
       setChannelMessage(
         `TRENDYOL GO ${order.receipt_number || `#${order.id}`} teslim edildi olarak bildirildi.`
       );
+      void requestLucaAutoInvoice(order.id);
       await loadData();
       return;
     }
@@ -988,6 +1013,8 @@ await loadIncomingOrdersOnly();
       alert(error.message);
       return;
     }
+
+    void requestLucaAutoInvoice(order.id);
 
     setChannelMessage(
       `${sourceLabel(order.source)} ${
@@ -1471,6 +1498,8 @@ await loadData();
       if (stockError) {
         throw new Error(`Adisyon kapandı fakat stok düşürülemedi: ${stockError.message}`);
       }
+
+      void requestLucaAutoInvoice(targetOrderId);
 
       preparePrint(label, paymentLabel, nextReceipt);
       setPaymentOpen(false);
