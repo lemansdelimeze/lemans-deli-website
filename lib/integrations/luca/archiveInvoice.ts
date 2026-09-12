@@ -109,12 +109,32 @@ function externalCode(order: ClosedOrder) {
   return `LD-${receipt}-${order.id}`.slice(0, 64);
 }
 
+function isBeverage(name: string) {
+  const value = name.toLocaleLowerCase("tr-TR");
+  return ["ayran", "cola", "kola", "ice tea", "lipton", "fanta", "sprite", "soda", "su", "kahve", "çay", "limonata", "meyve suyu", "red bull"].some((term) => value.includes(term));
+}
+
+function groupedInvoiceLines(lines: InvoiceLine[]) {
+  const totals = lines.reduce((result, line) => {
+    const total = Number(line.line_total);
+    if (!Number.isFinite(total) || total <= 0) return result;
+    if (isBeverage(String(line.product_name || ""))) result.beverage += total;
+    else result.food += total;
+    return result;
+  }, { food: 0, beverage: 0 });
+
+  return [
+    totals.food > 0 ? { product_name: "Yiyecek Bedeli", quantity: 1, line_total: totals.food } : null,
+    totals.beverage > 0 ? { product_name: "İçecek Bedeli", quantity: 1, line_total: totals.beverage } : null,
+  ].filter((line): line is InvoiceLine => line !== null);
+}
+
 export function buildLucaArchiveInvoiceDraft(
   order: ClosedOrder,
   lines: InvoiceLine[]
 ): LucaArchiveDraft {
   const settings = config();
-  const validLines = lines
+  const validLines = groupedInvoiceLines(lines)
     .map((line) => ({
       name: String(line.product_name || "Ürün").trim() || "Ürün",
       quantity: Number(line.quantity),
