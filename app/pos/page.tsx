@@ -2030,6 +2030,12 @@ await loadData();
                           <p className="mt-1 text-xs opacity-55">
                             {order.receipt_number || `Sipariş #${order.id}`} ·{" "}
                             {order.order_type || "Paket"}
+                            {order.created_at && (
+                              <> · Sipariş saati: {new Date(order.created_at).toLocaleTimeString("tr-TR", {
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })}</>
+                            )}
                           </p>
                         </div>
                         <div className="text-right">
