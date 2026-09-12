@@ -126,7 +126,7 @@ function groupedInvoiceLines(lines: InvoiceLine[]) {
   return [
     totals.food > 0 ? { product_name: "Yiyecek Bedeli", quantity: 1, line_total: totals.food } : null,
     totals.beverage > 0 ? { product_name: "İçecek Bedeli", quantity: 1, line_total: totals.beverage } : null,
-  ].filter((line): line is InvoiceLine => line !== null);
+  ].filter((line): line is { product_name: string; quantity: number; line_total: number } => line !== null);
 }
 
 export function buildLucaArchiveInvoiceDraft(
