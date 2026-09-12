@@ -418,3 +418,249 @@ export default function PosInvoicesPage() {
                     {selectedOrder.receipt_number ||
                       `Adisyon #${selectedOrder.id}`}{" "}
                     · {money(selectedOrder.total)} ₺
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setSelectedOrder(null)}
+                  className="rounded-full border bg-white px-3 py-2"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="mt-6 grid gap-4 sm:grid-cols-2">
+                <Field label="Müşteri Tipi">
+                  <select
+                    value={draft.customerType}
+                    onChange={(event) =>
+                      setDraft((current) => ({
+                        ...current,
+                        customerType: event.target.value as
+                          | "individual"
+                          | "company",
+                      }))
+                    }
+                    className="w-full rounded-xl border bg-white px-4 py-3"
+                  >
+                    <option value="individual">
+                      Bireysel / e-Arşiv
+                    </option>
+                    <option value="company">
+                      Firma / e-Fatura
+                    </option>
+                  </select>
+                </Field>
+
+                <Field label="TCKN / VKN">
+                  <input
+                    value={draft.taxNumber}
+                    onChange={(event) =>
+                      setDraft((current) => ({
+                        ...current,
+                        taxNumber: event.target.value,
+                      }))
+                    }
+                    className="w-full rounded-xl border bg-white px-4 py-3"
+                  />
+                </Field>
+
+                <Field label="Ad Soyad / Firma Unvanı">
+                  <input
+                    value={draft.customerName}
+                    onChange={(event) =>
+                      setDraft((current) => ({
+                        ...current,
+                        customerName: event.target.value,
+                      }))
+                    }
+                    className="w-full rounded-xl border bg-white px-4 py-3"
+                  />
+                </Field>
+
+                <Field label="Vergi Dairesi">
+                  <input
+                    value={draft.taxOffice}
+                    onChange={(event) =>
+                      setDraft((current) => ({
+                        ...current,
+                        taxOffice: event.target.value,
+                      }))
+                    }
+                    className="w-full rounded-xl border bg-white px-4 py-3"
+                  />
+                </Field>
+
+                <Field label="E-posta">
+                  <input
+                    type="email"
+                    value={draft.email}
+                    onChange={(event) =>
+                      setDraft((current) => ({
+                        ...current,
+                        email: event.target.value,
+                      }))
+                    }
+                    className="w-full rounded-xl border bg-white px-4 py-3"
+                  />
+                </Field>
+
+                <Field label="İl">
+                  <input
+                    value={draft.city}
+                    onChange={(event) =>
+                      setDraft((current) => ({
+                        ...current,
+                        city: event.target.value,
+                      }))
+                    }
+                    className="w-full rounded-xl border bg-white px-4 py-3"
+                  />
+                </Field>
+
+                <Field label="İlçe">
+                  <input
+                    value={draft.district}
+                    onChange={(event) =>
+                      setDraft((current) => ({
+                        ...current,
+                        district: event.target.value,
+                      }))
+                    }
+                    className="w-full rounded-xl border bg-white px-4 py-3"
+                  />
+                </Field>
+
+                <Field label="Adres">
+                  <textarea
+                    rows={3}
+                    value={draft.address}
+                    onChange={(event) =>
+                      setDraft((current) => ({
+                        ...current,
+                        address: event.target.value,
+                      }))
+                    }
+                    className="w-full resize-y rounded-xl border bg-white px-4 py-3"
+                  />
+                </Field>
+              </div>
+
+              <div className="mt-6 rounded-2xl border border-amber-700/15 bg-amber-50 p-4 text-sm text-amber-900">
+                Şimdilik yalnızca taslak hazırlanır. LUCA API erişimi
+                açıldığında bu hazır kayıtlar e-Fatura / e-Arşiv olarak
+                gönderilecek.
+              </div>
+
+              <button
+                disabled={saving}
+                className="mt-5 w-full rounded-xl bg-[#6e1f12] px-5 py-4 font-bold text-white disabled:opacity-40"
+              >
+                {saving ? "Kaydediliyor..." : "Fatura Taslağını Kaydet"}
+              </button>
+            </form>
+          </div>
+        )}
+
+        {xmlPreview && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/45 p-4">
+            <div className="flex max-h-[90vh] w-full max-w-5xl flex-col rounded-3xl bg-white p-5 shadow-2xl">
+              <div className="flex items-center justify-between gap-4">
+                <div><h2 className="text-xl font-bold text-[#6e1f12]">XML Taslağı</h2><p className="text-sm opacity-55">{xmlPreview.receiptNumber || "Sipariş"} · LUCA&apos;ya gönderilmedi</p></div>
+                <button type="button" onClick={() => setXmlPreview(null)} className="rounded-full border px-3 py-2">✕</button>
+              </div>
+              <pre className="mt-4 overflow-auto rounded-xl bg-[#292821] p-4 text-xs leading-5 text-white">{xmlPreview.xml}</pre>
+            </div>
+          </div>
+        )}
+      </div>
+    </main>
+  );
+}
+
+function InvoiceStatus({ order }: { order: Order }) {
+  if (order.invoice_status === "sent") {
+    return (
+      <div>
+        <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-bold text-green-800">
+          GÖNDERİLDİ
+        </span>
+        {order.invoice_number && (
+          <p className="mt-1 text-xs opacity-45">{order.invoice_number}</p>
+        )}
+      </div>
+    );
+  }
+
+  if (order.invoice_status === "failed") {
+    return (
+      <div>
+        <span className="rounded-full bg-red-100 px-3 py-1 text-xs font-bold text-red-800">
+          HATA
+        </span>
+        {order.invoice_error && (
+          <p className="mt-1 max-w-xs text-xs text-red-700">
+            {order.invoice_error}
+          </p>
+        )}
+      </div>
+    );
+  }
+
+  if (
+    order.invoice_status === "draft" ||
+    order.invoice_status === "ready"
+  ) {
+    return (
+      <span className="w-fit rounded-full bg-amber-100 px-3 py-1 text-xs font-bold text-amber-800">
+        TASLAK HAZIR
+      </span>
+    );
+  }
+
+  return (
+    <span className="w-fit rounded-full bg-black/5 px-3 py-1 text-xs font-semibold opacity-55">
+      FATURA YOK
+    </span>
+  );
+}
+
+function FilterButton({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`rounded-xl px-4 py-2 text-sm font-semibold ${
+        active
+          ? "bg-[#6e1f12] text-white"
+          : "border bg-white text-[#292821]"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
+function Field({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <label className="block">
+      <span className="mb-2 block text-sm font-semibold">{label}</span>
+      {children}
+    </label>
+  );
+}
