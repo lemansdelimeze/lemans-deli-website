@@ -37,6 +37,14 @@ export type LucaArchiveResult = {
   rawResponse: string;
 };
 
+export type LucaArchiveDraft = {
+  externalCode: string;
+  xml: string;
+  grossTotal: number;
+  netTotal: number;
+  vatTotal: number;
+};
+
 function required(name: string) {
   const value = process.env[name]?.trim();
   if (!value) throw new Error(`${name} sunucuda tanımlı değil.`);
@@ -101,10 +109,10 @@ function externalCode(order: ClosedOrder) {
   return `LD-${receipt}-${order.id}`.slice(0, 64);
 }
 
-export async function sendLucaArchiveInvoice(
+export function buildLucaArchiveInvoiceDraft(
   order: ClosedOrder,
   lines: InvoiceLine[]
-): Promise<LucaArchiveResult> {
+): LucaArchiveDraft {
   const settings = config();
   const validLines = lines
     .map((line) => ({
@@ -226,13 +234,22 @@ export async function sendLucaArchiveInvoice(
   </soapenv:Body>
 </soapenv:Envelope>`;
 
+  return { externalCode: code, xml, grossTotal, netTotal, vatTotal };
+}
+
+export async function sendLucaArchiveInvoice(
+  order: ClosedOrder,
+  lines: InvoiceLine[]
+): Promise<LucaArchiveResult> {
+  const settings = config();
+  const draft = buildLucaArchiveInvoiceDraft(order, lines);
   const response = await fetch(settings.serviceUrl, {
     method: "POST",
     headers: {
       "Content-Type": "text/xml; charset=utf-8",
       SOAPAction: '"http://tempuri.org/IInvoiceService/SendArchiveInvoice"',
     },
-    body: xml,
+    body: draft.xml,
     cache: "no-store",
   });
   const rawResponse = await response.text();
@@ -246,7 +263,7 @@ export async function sendLucaArchiveInvoice(
   }
 
   return {
-    externalCode: code,
+    externalCode: draft.externalCode,
     invoiceNumber: xmlValue(rawResponse, "InvoiceNumber"),
     invoiceUuid: xmlValue(rawResponse, "ETTN") || xmlValue(rawResponse, "Ettn"),
     rawResponse,
