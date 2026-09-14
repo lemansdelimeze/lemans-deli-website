@@ -1261,6 +1261,8 @@ await loadIncomingOrdersOnly();
           ...values,
           payment_method: "pending",
           status: "open",
+          source: "pos",
+          pos_stage: "new",
         }).select("id").single();
         if (error) throw error;
         targetOrderId = data.id; setOrderId(targetOrderId);
@@ -2206,6 +2208,33 @@ await loadData();
           )}
  
           <section className="mb-5 rounded-3xl border border-[#6e1f12]/10 bg-white p-4">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <h2 className="text-xl font-bold text-[#6e1f12]" style={{ fontFamily: BRAND_FONT }}>Yeni Adisyon</h2>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => startNonTable("Paket")}
+                  className={`rounded-xl border px-4 py-3 text-sm font-bold ${
+                    orderType === "Paket" && !orderId
+                      ? "border-[#6e1f12] bg-[#6e1f12] text-white"
+                      : "border-[#6e1f12]/20 bg-white text-[#6e1f12]"
+                  }`}
+                >
+                  📦 Yeni Paket
+                </button>
+                <button
+                  type="button"
+                  onClick={() => startNonTable("Gel-Al")}
+                  className={`rounded-xl border px-4 py-3 text-sm font-bold ${
+                    orderType === "Gel-Al" && !orderId
+                      ? "border-[#6e1f12] bg-[#6e1f12] text-white"
+                      : "border-[#6e1f12]/20 bg-white text-[#6e1f12]"
+                  }`}
+                >
+                  🛍 Yeni Gel-Al
+                </button>
+              </div>
+            </div>
             <h2 className="mb-3 text-xl font-bold text-[#6e1f12]" style={{ fontFamily: BRAND_FONT }}>Masalar</h2>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-8">
               {tables.map((table) => {
