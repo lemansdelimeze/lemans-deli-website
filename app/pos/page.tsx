@@ -1880,76 +1880,6 @@ await loadData();
             </section>
           )}
 
-          {(staffRole === "admin" || staffRole === "owner") && (
-          <section className="mb-5 rounded-3xl border border-[#6e1f12]/10 bg-white p-4">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-              <div>
-                <h2
-                  className="text-xl font-bold text-[#6e1f12]"
-                  style={{ fontFamily: BRAND_FONT }}
-                >
-                  Sipariş Kanalları
-                </h2>
-                <p className="mt-1 text-xs opacity-50">
-                  Web siparişleri anlık gelir. Trendyol Go burada sorgulanabilir; istersen 60 sn otomatik sorgu açabilirsin.
-                </p>
-              </div>
-
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={() => void syncTrendyol(true)}
-                  disabled={syncingTrendyol}
-                  className="rounded-xl border border-orange-200 bg-orange-50 px-4 py-2 text-sm font-bold text-orange-800 disabled:opacity-50"
-                >
-                  {syncingTrendyol ? "Trendyol Sorgulanıyor..." : "🟠 Trendyol'u Çek"}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setTrendyolAutoSync((value) => !value)}
-                  className={`rounded-xl border px-4 py-2 text-sm font-bold ${
-                    trendyolAutoSync
-                      ? "border-green-200 bg-green-50 text-green-800"
-                      : "border-black/10 bg-white text-[#292821]"
-                  }`}
-                >
-                  {trendyolAutoSync ? "✓ Trendyol Otomatik: Açık" : "Trendyol Otomatik: Kapalı"}
-                </button>
-
-                <button
-                  type="button"
-                  disabled
-                  title="Yemeksepeti Partner API erişimi henüz bağlı değil."
-                  className="rounded-xl border border-pink-200 bg-pink-50 px-4 py-2 text-sm font-bold text-pink-800 opacity-55"
-                >
-                  🩷 Yemeksepeti · API Bekleniyor
-                </button>
-              </div>
-            </div>
-
-            <div className="mt-3 flex flex-wrap gap-2 text-xs">
-              {integrationAccounts.map((account) => (
-                <span
-                  key={account.channel}
-                  className="rounded-full bg-[#f4efe5] px-3 py-1.5"
-                >
-                  {account.channel === "trendyol" ? "Trendyol" : "Yemeksepeti"}:{" "}
-                  {account.active ? "aktif" : "pasif"} ·{" "}
-                  {account.credentials_configured ? "bilgiler hazır" : "bilgiler eksik"}
-                </span>
-              ))}
-            </div>
-
-            {channelMessage && (
-              <p className="mt-3 rounded-xl bg-[#f4efe5] px-4 py-3 text-sm">
-                {channelMessage}
-              </p>
-            )}
-          </section>
-
-          )}
-
           {incomingOrders.length > 0 && (
             <section className="mb-5 rounded-3xl border-2 border-[#6e1f12]/20 bg-white p-4">
               <div className="mb-4 flex items-center justify-between gap-3">
@@ -2208,33 +2138,6 @@ await loadData();
           )}
  
           <section className="mb-5 rounded-3xl border border-[#6e1f12]/10 bg-white p-4">
-            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-              <h2 className="text-xl font-bold text-[#6e1f12]" style={{ fontFamily: BRAND_FONT }}>Yeni Adisyon</h2>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={() => startNonTable("Paket")}
-                  className={`rounded-xl border px-4 py-3 text-sm font-bold ${
-                    orderType === "Paket" && !orderId
-                      ? "border-[#6e1f12] bg-[#6e1f12] text-white"
-                      : "border-[#6e1f12]/20 bg-white text-[#6e1f12]"
-                  }`}
-                >
-                  📦 Yeni Paket
-                </button>
-                <button
-                  type="button"
-                  onClick={() => startNonTable("Gel-Al")}
-                  className={`rounded-xl border px-4 py-3 text-sm font-bold ${
-                    orderType === "Gel-Al" && !orderId
-                      ? "border-[#6e1f12] bg-[#6e1f12] text-white"
-                      : "border-[#6e1f12]/20 bg-white text-[#6e1f12]"
-                  }`}
-                >
-                  🛍 Yeni Gel-Al
-                </button>
-              </div>
-            </div>
             <h2 className="mb-3 text-xl font-bold text-[#6e1f12]" style={{ fontFamily: BRAND_FONT }}>Masalar</h2>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-8">
               {tables.map((table) => {
