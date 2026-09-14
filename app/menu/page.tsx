@@ -36,6 +36,8 @@ type MenuItem = {
 
   price: number | null;
   portion: string | null;
+  portion_en: string | null;
+  portion_ru: string | null;
 
   category: string | null;
   category_id: number | null;
@@ -394,6 +396,12 @@ function getProductDescription(
   return item.description_tr || "";
 }
 
+function getProductPortion(item: MenuItem, language: Language) {
+  if (language === "en") return item.portion_en || item.portion || "";
+  if (language === "ru") return item.portion_ru || item.portion || "";
+  return item.portion || "";
+}
+
 function getDietaryLabel(
   dietary: Dietary | null,
   language: Language
@@ -615,6 +623,8 @@ export default function MenuPage() {
               description_ru,
               price,
               portion,
+              portion_en,
+              portion_ru,
               category,
               category_id,
               calories_per_100g,
@@ -781,8 +791,8 @@ export default function MenuPage() {
       return `${row.weightGrams} gr`;
     }
     return row.portionType === "half"
-      ? halfPortionLabel(row.item.portion)
-      : row.item.portion || "";
+      ? halfPortionLabel(getProductPortion(row.item, language))
+      : getProductPortion(row.item, language);
   }
 
   function halfPortionLabel(portion: string | null) {
@@ -1703,14 +1713,15 @@ function CategoryProducts({
         const name = getProductName(item, language);
         const description = getProductDescription(item, language);
         const dietaryLabel = getDietaryLabel(item.dietary, language);
+        const portion = getProductPortion(item, language);
         const spicyLevel = normalizeSpicyLevel(item.spicy_level);
 
         const details: { label: string; value: string }[] = [];
 
-        if (item.portion) {
+        if (portion) {
           details.push({
             label: texts[language].portion as string,
-            value: item.portion,
+            value: portion,
           });
         }
 
@@ -1752,7 +1763,7 @@ function CategoryProducts({
             <ProductRow
               name={name}
               description={description}
-              portion={item.portion}
+              portion={portion}
               calories={item.calories_per_portion}
               dietaryLabel={dietaryLabel}
               price={item.price}
