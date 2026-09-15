@@ -252,6 +252,20 @@ export default function PosInvoicesPage() {
     setSaving(false);
   }
 
+  async function sendInvoice() {
+    if (!selectedOrder) return;
+    if (!confirm("Bu işlem canlı LUCA e-Arşiv faturası keser. Devam edilsin mi?")) return;
+    setSaving(true);
+    try {
+      const response = await retroRequest("/api/integrations/luca/auto-invoice", { method: "POST", body: JSON.stringify({ orderId: selectedOrder.id, manual: true }) });
+      const result = await response.json();
+      if (!response.ok || !result.ok) throw new Error(result.error || "Fatura gönderilemedi.");
+      alert(result.status === "sent" ? `Fatura kesildi: ${result.invoiceNumber || ""}` : "Fatura durumu: " + result.status);
+      setSelectedOrder(null); await loadOrders();
+    } catch (error) { alert(error instanceof Error ? error.message : "Fatura gönderilemedi."); }
+    finally { setSaving(false); }
+  }
+
   return (
     <main className="min-h-screen bg-[#f4efe5] px-4 py-6 text-[#292821] md:px-8">
       <div className="mx-auto max-w-7xl">
@@ -552,6 +566,12 @@ export default function PosInvoicesPage() {
                 açıldığında bu hazır kayıtlar e-Fatura / e-Arşiv olarak
                 gönderilecek.
               </div>
+
+              {(selectedOrder.invoice_status === "ready" || selectedOrder.invoice_status === "failed") && (
+                <button type="button" disabled={saving} onClick={() => void sendInvoice()} className="mt-5 w-full rounded-xl bg-green-700 px-5 py-4 font-bold text-white disabled:opacity-40">
+                  {saving ? "Gönderiliyor..." : "LUCA’ya Gönder ve Fatura Kes"}
+                </button>
+              )}
 
               <button
                 disabled={saving}
