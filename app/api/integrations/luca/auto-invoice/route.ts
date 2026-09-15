@@ -99,7 +99,7 @@ export async function POST(request: NextRequest) {
   if (order.status !== "closed") {
     return NextResponse.json({ ok: false, error: "Sadece kapanmış sipariş faturalandırılabilir." }, { status: 409 });
   }
-  if (!body.manual && !isOnlinePlatformPayment(order)) {
+  if (!isOnlinePlatformPayment(order)) {
     return NextResponse.json({ ok: true, status: "out_of_scope" });
   }
   if (order.invoice_status === "sent") {
