@@ -78,18 +78,18 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const body = (await request.json()) as { orderId?: number };
+  const body = (await request.json()) as { orderId?: number; manual?: boolean };
   if (!body.orderId) {
     return NextResponse.json({ ok: false, error: "Sipariş numarası zorunlu." }, { status: 400 });
   }
 
-  if (process.env.LUCA_AUTO_INVOICE_ENABLED !== "true") {
+  if (!body.manual && process.env.LUCA_AUTO_INVOICE_ENABLED !== "true") {
     return NextResponse.json({ ok: true, status: "disabled" });
   }
 
   const { data: order, error: orderError } = await supabaseAdmin
     .from("pos_orders")
-    .select("id,receipt_number,customer_name,customer_phone,delivery_address,total,status,source,payment_method,external_payload,invoice_status")
+    .select("id,receipt_number,customer_name,customer_phone,delivery_address,total,status,source,payment_method,external_payload,invoice_status,invoice_customer_name,invoice_address,invoice_tax_number")
     .eq("id", body.orderId)
     .single();
 
@@ -99,7 +99,7 @@ export async function POST(request: NextRequest) {
   if (order.status !== "closed") {
     return NextResponse.json({ ok: false, error: "Sadece kapanmış sipariş faturalandırılabilir." }, { status: 409 });
   }
-  if (!isOnlinePlatformPayment(order)) {
+  if (!body.manual && !isOnlinePlatformPayment(order)) {
     return NextResponse.json({ ok: true, status: "out_of_scope" });
   }
   if (order.invoice_status === "sent") {
@@ -119,7 +119,7 @@ export async function POST(request: NextRequest) {
       invoice_created_at: new Date().toISOString(),
     })
     .eq("id", order.id)
-    .eq("invoice_status", "none")
+    .in("invoice_status", body.manual ? ["ready", "failed"] : ["none"])
     .select("id")
     .maybeSingle();
 
@@ -135,7 +135,8 @@ export async function POST(request: NextRequest) {
       .order("id");
     if (linesError) throw linesError;
 
-    const result = await sendLucaArchiveInvoice(order, lines ?? []);
+    const invoiceOrder = body.manual ? { ...order, customer_name: order.invoice_customer_name || order.customer_name, delivery_address: order.invoice_address || order.delivery_address } : order;
+    const result = await sendLucaArchiveInvoice(invoiceOrder, lines ?? []);
     const { error: sentError } = await supabaseAdmin
       .from("pos_orders")
       .update({
