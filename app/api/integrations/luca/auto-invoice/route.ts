@@ -105,8 +105,11 @@ export async function POST(request: NextRequest) {
   if (order.invoice_status === "sent") {
     return NextResponse.json({ ok: true, status: "already_sent" });
   }
-  if (order.invoice_status !== "none") {
+  if (!body.manual && order.invoice_status !== "none") {
     return NextResponse.json({ ok: true, status: "not_automatic" });
+  }
+  if (body.manual && !["ready", "failed"].includes(String(order.invoice_status))) {
+    return NextResponse.json({ ok: false, error: "Önce fatura taslağını kaydedin." }, { status: 409 });
   }
 
   const { data: locked, error: lockError } = await supabaseAdmin
