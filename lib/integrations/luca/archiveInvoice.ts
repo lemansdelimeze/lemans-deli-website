@@ -10,6 +10,7 @@ type ClosedOrder = {
   customer_name: string | null;
   customer_phone: string | null;
   delivery_address: string | null;
+  invoice_tax_number?: string | null;
   total: number | string | null;
 };
 
@@ -178,6 +179,7 @@ export function buildLucaArchiveInvoiceDraft(
     : grossTotal * (1 + settings.vatRate / 100);
   const code = externalCode(order);
   const receiverName = order.customer_name?.trim() || settings.defaultReceiverName;
+  const receiverTaxCode = order.invoice_tax_number?.trim() || settings.defaultReceiverTaxCode;
   const receiverAddress =
     order.delivery_address?.trim() || settings.defaultReceiverAddress;
 
@@ -236,7 +238,7 @@ export function buildLucaArchiveInvoiceDraft(
                 <ein:CityName>${escapeXml(settings.sender.cityName)}</ein:CityName>
               </ein:Address>
               <ein:ReceiverName>${escapeXml(receiverName)}</ein:ReceiverName>
-              <ein:ReceiverTaxCode>${escapeXml(settings.defaultReceiverTaxCode)}</ein:ReceiverTaxCode>
+              <ein:ReceiverTaxCode>${escapeXml(receiverTaxCode)}</ein:ReceiverTaxCode>
               <ein:SendingType>KAGIT</ein:SendingType>
             </ein:Receiver>
             <ein:ReceiverBranchAddress><ein:BoulevardAveneuStreetName>${escapeXml(receiverAddress)}</ein:BoulevardAveneuStreetName></ein:ReceiverBranchAddress>
