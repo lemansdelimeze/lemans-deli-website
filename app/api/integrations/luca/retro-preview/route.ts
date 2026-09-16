@@ -50,7 +50,7 @@ function isOnlineMarketplacePayment(order: {
   payment_method: string | null;
   external_payload: unknown;
 }) {
-  return ['trendyol', 'yemeksepeti'].includes(String(order.source)) &&
+  return ['web', 'trendyol', 'yemeksepeti'].includes(String(order.source)) &&
     onlinePaymentKind(order) !== null;
 }
 
@@ -65,7 +65,7 @@ export async function GET(request: NextRequest) {
   const until = request.nextUrl.searchParams.get("until");
   const datePattern = /^\\d{4}-\\d{2}-\\d{2}$/;
 
-  if (!["all", "trendyol", "yemeksepeti"].includes(source)) {
+  if (!["all", "web", "trendyol", "yemeksepeti"].includes(source)) {
     return NextResponse.json({ ok: false, error: "Geçersiz sipariş kanalı." }, { status: 400 });
   }
   if (!["all", "online", "pay_with_card"].includes(payment)) {
@@ -83,7 +83,7 @@ export async function GET(request: NextRequest) {
     .order("closed_at", { ascending: true });
 
   query = source === "all"
-    ? query.in("source", ["trendyol", "yemeksepeti"])
+    ? query.in("source", ["web", "trendyol", "yemeksepeti"])
     : query.eq("source", source);
 
   if (from) {
