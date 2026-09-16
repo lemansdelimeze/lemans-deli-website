@@ -93,6 +93,12 @@ export default function PosInvoicesPage() {
   const [retroCandidates, setRetroCandidates] = useState<RetroCandidate[] | null>(null);
   const [retroGrossTotal, setRetroGrossTotal] = useState(0);
   const [retroTitle, setRetroTitle] = useState("Geçmiş Online Tahsilat Önizlemesi");
+  const [retroFilters, setRetroFilters] = useState({
+    source: "trendyol" as "all" | "trendyol" | "yemeksepeti",
+    payment: "all" as "all" | "online" | "pay_with_card",
+    from: "2026-07-01",
+    until: "2026-09-14",
+  });
   const [retroLoading, setRetroLoading] = useState(false);
   const [xmlPreview, setXmlPreview] = useState<{ receiptNumber: string | null; xml: string } | null>(null);
 
@@ -110,24 +116,40 @@ export default function PosInvoicesPage() {
     });
   }
 
-  async function loadRetroCandidates(filters?: { source?: "trendyol" | "yemeksepeti"; until?: string; title?: string }) {
+  async function loadRetroCandidates() {
     setRetroLoading(true);
     try {
       const params = new URLSearchParams();
-      if (filters?.source) params.set("source", filters.source);
-      if (filters?.until) params.set("until", filters.until);
-      const query = params.toString();
-      const response = await retroRequest(`/api/integrations/luca/retro-preview${query ? `?${query}` : ""}`);
+      params.set("source", retroFilters.source);
+      params.set("payment", retroFilters.payment);
+      if (retroFilters.from) params.set("from", retroFilters.from);
+      if (retroFilters.until) params.set("until", retroFilters.until);
+
+      const sourceLabel = retroFilters.source === "all"
+        ? "Tüm kanallar"
+        : retroFilters.source === "trendyol" ? "Trendyol Go" : "Yemeksepeti";
+      const paymentLabel = retroFilters.payment === "all"
+        ? "Tüm online ödemeler"
+        : retroFilters.payment === "online" ? "Online ödeme" : "Pay with Card";
+
+      const response = await retroRequest(`/api/integrations/luca/retro-preview?${params.toString()}`);
       const result = await response.json();
       if (!response.ok || !result.ok) throw new Error(result.error || "Önizleme listesi alınamadı.");
       setRetroCandidates(result.candidates || []);
       setRetroGrossTotal(Number(result.grossTotal || 0));
-      setRetroTitle(filters?.title || "Geçmiş Online Tahsilat Önizlemesi");
+      setRetroTitle(`${sourceLabel} · ${paymentLabel}`);
     } catch (error) {
       alert(error instanceof Error ? error.message : "Önizleme listesi alınamadı.");
     } finally {
       setRetroLoading(false);
     }
+  }
+
+  function resetRetroFilters() {
+    setRetroFilters({ source: "all", payment: "all", from: "", until: "" });
+    setRetroCandidates(null);
+    setRetroGrossTotal(0);
+    setRetroTitle("Geçmiş Online Tahsilat Önizlemesi");
   }
 
   async function openXmlPreview(candidate: RetroCandidate) {
@@ -311,26 +333,6 @@ export default function PosInvoicesPage() {
 
           <div className="flex flex-wrap gap-2">
             <button
-              type="button"
-              onClick={() => void loadRetroCandidates({
-                source: "trendyol",
-                until: "2026-09-14",
-                title: "Trendyol Go · online ödeme · 14 Eylül 2026'ya kadar",
-              })}
-              disabled={retroLoading}
-              className="rounded-xl bg-[#6e1f12] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
-            >
-              {retroLoading ? "Online ödemeler taranıyor..." : "Trendyol Online · 14 Eylüle Kadar"}
-            </button>
-            <button
-              type="button"
-              onClick={() => void loadRetroCandidates()}
-              disabled={retroLoading}
-              className="rounded-xl border border-[#6e1f12]/20 bg-[#fff8ef] px-4 py-2 text-sm font-semibold text-[#6e1f12] disabled:opacity-50"
-            >
-              Tüm Geçmiş Online Ödemeler
-            </button>
-            <button
               onClick={() => void loadOrders()}
               className="rounded-xl border bg-white px-4 py-2 text-sm font-semibold"
             >
@@ -350,6 +352,45 @@ export default function PosInvoicesPage() {
             </a>
           </div>
         </header>
+
+        <section className="mb-6 rounded-3xl border border-[#6e1f12]/15 bg-white p-4 md:p-5">
+          <div className="mb-4">
+            <h2 className="font-bold text-[#6e1f12]">Online Fatura Filtreleri</h2>
+            <p className="mt-1 text-sm opacity-55">Yalnız Trendyol Go ve Yemeksepeti online tahsilatları listelenir; kesilmiş faturalar gelmez.</p>
+          </div>
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_1fr_auto_auto]">
+            <label className="block">
+              <span className="mb-1 block text-xs font-semibold opacity-60">Kanal</span>
+              <select value={retroFilters.source} onChange={(event) => setRetroFilters((current) => ({ ...current, source: event.target.value as typeof current.source }))} className="w-full rounded-xl border bg-white px-3 py-2.5">
+                <option value="all">Tüm Kanallar</option>
+                <option value="trendyol">Trendyol Go</option>
+                <option value="yemeksepeti">Yemeksepeti</option>
+              </select>
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-xs font-semibold opacity-60">Ödeme Tipi</span>
+              <select value={retroFilters.payment} onChange={(event) => setRetroFilters((current) => ({ ...current, payment: event.target.value as typeof current.payment }))} className="w-full rounded-xl border bg-white px-3 py-2.5">
+                <option value="all">Tüm Online Ödemeler</option>
+                <option value="online">Online Ödeme</option>
+                <option value="pay_with_card">Pay with Card</option>
+              </select>
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-xs font-semibold opacity-60">Başlangıç</span>
+              <input type="date" value={retroFilters.from} onChange={(event) => setRetroFilters((current) => ({ ...current, from: event.target.value }))} className="w-full rounded-xl border bg-white px-3 py-2.5" />
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-xs font-semibold opacity-60">Bitiş</span>
+              <input type="date" value={retroFilters.until} onChange={(event) => setRetroFilters((current) => ({ ...current, until: event.target.value }))} className="w-full rounded-xl border bg-white px-3 py-2.5" />
+            </label>
+            <button type="button" onClick={() => void loadRetroCandidates()} disabled={retroLoading} className="self-end rounded-xl bg-[#6e1f12] px-4 py-2.5 text-sm font-bold text-white disabled:opacity-50">
+              {retroLoading ? "Listeleniyor..." : "Listele"}
+            </button>
+            <button type="button" onClick={resetRetroFilters} disabled={retroLoading} className="self-end rounded-xl border px-4 py-2.5 text-sm font-semibold disabled:opacity-50">
+              Temizle
+            </button>
+          </div>
+        </section>
 
         {retroCandidates && (
           <section className="mb-6 overflow-hidden rounded-3xl border border-[#6e1f12]/20 bg-white">
