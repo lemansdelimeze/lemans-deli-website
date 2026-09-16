@@ -50,13 +50,33 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ ok: false, error: "Fatura önizleme yetkiniz bulunmuyor." }, { status: 403 });
   }
 
-  const { data, error } = await supabaseAdmin
+  const source = request.nextUrl.searchParams.get("source");
+  const until = request.nextUrl.searchParams.get("until");
+  if (source && !["trendyol", "yemeksepeti"].includes(source)) {
+    return NextResponse.json({ ok: false, error: "Geçersiz sipariş kaynağı." }, { status: 400 });
+  }
+  if (until && !/^\\d{4}-\\d{2}-\\d{2}$/.test(until)) {
+    return NextResponse.json({ ok: false, error: "Bitiş tarihi YYYY-AA-GG formatında olmalı." }, { status: 400 });
+  }
+
+  let query = supabaseAdmin
     .from("pos_orders")
     .select("id,receipt_number,customer_name,total,source,payment_method,external_payload,created_at,closed_at,invoice_status")
     .eq("status", "closed")
     .neq("invoice_status", "sent")
-    .in("source", ["trendyol", "yemeksepeti"])
     .order("closed_at", { ascending: true });
+
+  query = source
+    ? query.eq("source", source)
+    : query.in("source", ["trendyol", "yemeksepeti"]);
+
+  if (until) {
+    const end = new Date(`${until}T00:00:00+03:00`);
+    end.setDate(end.getDate() + 1);
+    query = query.lt("closed_at", end.toISOString());
+  }
+
+  const { data, error } = await query;
   if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
 
   const candidates = (data ?? []).filter(isOnlineMarketplacePayment).map((order) => ({
