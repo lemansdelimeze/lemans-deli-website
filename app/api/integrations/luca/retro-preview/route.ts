@@ -29,7 +29,7 @@ async function authorize(request: NextRequest) {
   return Boolean(staff?.active && ["admin", "owner"].includes(String(staff.role)));
 }
 
-function onlinePaymentKind(order: {
+function paymentCategory(order: {
   payment_method: string | null;
   external_payload: unknown;
 }) {
@@ -40,18 +40,21 @@ function onlinePaymentKind(order: {
     .filter((value): value is string => typeof value === 'string')
     .join(' ')
     .toLocaleLowerCase('tr-TR');
-  if (text.includes('pay_with_card')) return 'pay_with_card';
-  if (text.includes('online')) return 'online';
-  return null;
+
+  if (text.includes('pay_with_card') || text.includes('online')) return 'online';
+  if (text.includes('setcard') || text.includes('edenred') || text.includes('pluxee') || text.includes('meal_card') || text.includes('yemek kart')) return 'meal_card';
+  if (text.includes('cash') || text.includes('nakit')) return 'cash';
+  if (text.includes('card') || text.includes('kredi kart')) return 'card';
+  return 'other';
 }
 
-function isOnlineMarketplacePayment(order: {
+function isOnlineInvoicePayment(order: {
   source: string | null;
   payment_method: string | null;
   external_payload: unknown;
 }) {
   return ['web', 'trendyol', 'yemeksepeti'].includes(String(order.source)) &&
-    onlinePaymentKind(order) !== null;
+    paymentCategory(order) === 'online';
 }
 
 export async function GET(request: NextRequest) {
@@ -68,7 +71,7 @@ export async function GET(request: NextRequest) {
   if (!["all", "web", "trendyol", "yemeksepeti"].includes(source)) {
     return NextResponse.json({ ok: false, error: "Geçersiz sipariş kanalı." }, { status: 400 });
   }
-  if (!["all", "online", "pay_with_card"].includes(payment)) {
+  if (!["all", "online", "card", "cash", "meal_card"].includes(payment)) {
     return NextResponse.json({ ok: false, error: "Geçersiz ödeme türü." }, { status: 400 });
   }
   if ((from && !datePattern.test(from)) || (until && !datePattern.test(until))) {
@@ -99,19 +102,19 @@ export async function GET(request: NextRequest) {
   if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
 
   const candidates = (data ?? [])
-    .filter(isOnlineMarketplacePayment)
-    .filter((order) => payment === "all" || onlinePaymentKind(order) === payment)
+    .filter((order) => payment === "all" || paymentCategory(order) === payment)
     .map((order) => ({
-    id: order.id,
-    receiptNumber: order.receipt_number,
-    customerName: order.customer_name || "Nihai Tüketici",
-    source: order.source,
-    paymentMethod: order.payment_method,
-    total: Number(order.total || 0),
-    closedAt: order.closed_at || order.created_at,
-    invoiceStatus: order.invoice_status || "none",
-    paymentKind: onlinePaymentKind(order),
-  }));
+      id: order.id,
+      receiptNumber: order.receipt_number,
+      customerName: order.customer_name || "Nihai Tüketici",
+      source: order.source,
+      paymentMethod: order.payment_method,
+      paymentKind: paymentCategory(order),
+      invoiceEligible: isOnlineInvoicePayment(order),
+      total: Number(order.total || 0),
+      closedAt: order.closed_at || order.created_at,
+      invoiceStatus: order.invoice_status || "none",
+    }));
   return NextResponse.json({
     ok: true,
     sendToLuca: false,
@@ -134,7 +137,7 @@ export async function POST(request: NextRequest) {
     .eq("id", body.orderId)
     .single();
   if (error || !order) return NextResponse.json({ ok: false, error: "Sipariş bulunamadı." }, { status: 404 });
-  if (order.status !== "closed" || !isOnlineMarketplacePayment(order)) {
+  if (order.status !== "closed" || !isOnlineInvoicePayment(order)) {
     return NextResponse.json({ ok: false, error: "Bu sipariş online tahsilatlı kapanmış pazar yeri siparişi değil." }, { status: 409 });
   }
   const { data: lines, error: linesError } = await supabaseAdmin
