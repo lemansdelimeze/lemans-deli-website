@@ -1,6 +1,7 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { supabase } from "../../../lib/supabase";
 
 type Order = {
@@ -80,6 +81,9 @@ function emptyDraft(): Draft {
 }
 
 export default function PosInvoicesPage() {
+  const searchParams = useSearchParams();
+  const orderIdFromOrdersPage = Number(searchParams.get("order"));
+  const openedFromOrdersPage = useRef<number | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
@@ -191,6 +195,23 @@ export default function PosInvoicesPage() {
       district: order.invoice_district ?? "",
     });
   }
+
+  useEffect(() => {
+    if (
+      loading ||
+      !Number.isInteger(orderIdFromOrdersPage) ||
+      orderIdFromOrdersPage <= 0 ||
+      openedFromOrdersPage.current === orderIdFromOrdersPage
+    ) {
+      return;
+    }
+
+    const order = orders.find((item) => item.id === orderIdFromOrdersPage);
+    if (!order) return;
+
+    openedFromOrdersPage.current = orderIdFromOrdersPage;
+    openDraft(order);
+  }, [loading, orderIdFromOrdersPage, orders]);
 
   async function saveDraft(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
