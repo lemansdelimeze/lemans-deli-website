@@ -55,6 +55,8 @@ type RetroCandidate = {
   total: number;
   closedAt: string;
   invoiceStatus: string;
+  paymentKind: "online" | "card" | "cash" | "meal_card" | "other";
+  invoiceEligible: boolean;
 };
 
 const BRAND_FONT =
@@ -95,7 +97,7 @@ export default function PosInvoicesPage() {
   const [retroTitle, setRetroTitle] = useState("Geçmiş Online Tahsilat Önizlemesi");
   const [retroFilters, setRetroFilters] = useState({
     source: "trendyol" as "all" | "trendyol" | "yemeksepeti",
-    payment: "all" as "all" | "online" | "pay_with_card",
+    payment: "all" as "all" | "online" | "card" | "cash" | "meal_card",
     from: "2026-07-01",
     until: "2026-09-14",
   });
@@ -130,7 +132,10 @@ export default function PosInvoicesPage() {
         : retroFilters.source === "trendyol" ? "Trendyol Go" : "Yemeksepeti";
       const paymentLabel = retroFilters.payment === "all"
         ? "Tüm online ödemeler"
-        : retroFilters.payment === "online" ? "Online ödeme" : "Pay with Card";
+        : retroFilters.payment === "online" ? "Online ödeme"
+        : retroFilters.payment === "card" ? "Kredi kartı"
+        : retroFilters.payment === "cash" ? "Nakit"
+        : "Yemek kartı";
 
       const response = await retroRequest(`/api/integrations/luca/retro-preview?${params.toString()}`);
       const result = await response.json();
@@ -356,13 +361,14 @@ export default function PosInvoicesPage() {
         <section className="mb-6 rounded-3xl border border-[#6e1f12]/15 bg-white p-4 md:p-5">
           <div className="mb-4">
             <h2 className="font-bold text-[#6e1f12]">Online Fatura Filtreleri</h2>
-            <p className="mt-1 text-sm opacity-55">Yalnız Trendyol Go ve Yemeksepeti online tahsilatları listelenir; kesilmiş faturalar gelmez.</p>
+            <p className="mt-1 text-sm opacity-55">Website, Trendyol Go ve Yemeksepeti siparişlerini filtrele. LUCA gönderimi yalnız online tahsilatlarda açılır; kesilmiş faturalar gelmez.</p>
           </div>
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_1fr_auto_auto]">
             <label className="block">
               <span className="mb-1 block text-xs font-semibold opacity-60">Kanal</span>
               <select value={retroFilters.source} onChange={(event) => setRetroFilters((current) => ({ ...current, source: event.target.value as typeof current.source }))} className="w-full rounded-xl border bg-white px-3 py-2.5">
                 <option value="all">Tüm Kanallar</option>
+                <option value="web">Website</option>
                 <option value="trendyol">Trendyol Go</option>
                 <option value="yemeksepeti">Yemeksepeti</option>
               </select>
@@ -370,9 +376,11 @@ export default function PosInvoicesPage() {
             <label className="block">
               <span className="mb-1 block text-xs font-semibold opacity-60">Ödeme Tipi</span>
               <select value={retroFilters.payment} onChange={(event) => setRetroFilters((current) => ({ ...current, payment: event.target.value as typeof current.payment }))} className="w-full rounded-xl border bg-white px-3 py-2.5">
-                <option value="all">Tüm Online Ödemeler</option>
+                <option value="all">Tüm Ödeme Tipleri</option>
                 <option value="online">Online Ödeme</option>
-                <option value="pay_with_card">Pay with Card</option>
+                <option value="card">Kredi Kartı</option>
+                <option value="cash">Nakit</option>
+                <option value="meal_card">Yemek Kartı (Setcard / Edenred / Pluxee)</option>
               </select>
             </label>
             <label className="block">
@@ -409,11 +417,15 @@ export default function PosInvoicesPage() {
                   <div key={candidate.id} className="flex flex-col gap-3 px-5 py-4 md:flex-row md:items-center md:justify-between">
                     <div>
                       <p className="font-semibold">{candidate.receiptNumber || `Sipariş #${candidate.id}`}</p>
-                      <p className="mt-1 text-xs opacity-55">{candidate.source === "trendyol" ? "Trendyol Go" : "Yemeksepeti"} · {candidate.paymentMethod || "Online ödeme"} · {new Date(candidate.closedAt).toLocaleString("tr-TR")}</p>
+                      <p className="mt-1 text-xs opacity-55">{candidate.source === "web" ? "Website" : candidate.source === "trendyol" ? "Trendyol Go" : "Yemeksepeti"} · {candidate.paymentKind === "online" ? "Online Ödeme" : candidate.paymentKind === "card" ? "Kredi Kartı" : candidate.paymentKind === "cash" ? "Nakit" : candidate.paymentKind === "meal_card" ? "Yemek Kartı" : candidate.paymentMethod || "Diğer"} · {new Date(candidate.closedAt).toLocaleString("tr-TR")}</p>
                     </div>
                     <div className="flex items-center gap-3">
                       <p className="font-bold">{money(candidate.total)} ₺</p>
-                      <button type="button" onClick={() => void openXmlPreview(candidate)} className="rounded-xl border border-[#6e1f12]/20 px-3 py-2 text-sm font-semibold text-[#6e1f12]">XML&apos;i Gör</button>
+                      {candidate.invoiceEligible ? (
+                        <button type="button" onClick={() => void openXmlPreview(candidate)} className="rounded-xl border border-[#6e1f12]/20 px-3 py-2 text-sm font-semibold text-[#6e1f12]">XML&apos;i Gör</button>
+                      ) : (
+                        <span className="rounded-xl bg-black/5 px-3 py-2 text-xs font-semibold opacity-60">Faturalama kapsamı dışında</span>
+                      )}
                     </div>
                   </div>
                 ))}
