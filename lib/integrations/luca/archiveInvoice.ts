@@ -286,7 +286,9 @@ export async function sendLucaArchiveInvoice(
 
   return {
     externalCode: draft.externalCode,
-    invoiceNumber:\n      xmlValue(rawResponse, "ArchiveInvoiceNumber") ||\n      xmlValue(rawResponse, "InvoiceNumber"),
+    invoiceNumber:
+      xmlValue(rawResponse, "ArchiveInvoiceNumber") ||
+      xmlValue(rawResponse, "InvoiceNumber"),
     invoiceUuid: xmlValue(rawResponse, "ETTN") || xmlValue(rawResponse, "Ettn"),
     rawResponse,
   };
