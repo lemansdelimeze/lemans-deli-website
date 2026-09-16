@@ -331,9 +331,10 @@ export default function PosOrdersPage() {
 
                   {selectedOrder.order_note && <div className="mt-4 rounded-xl border p-4"><p className="text-xs font-bold uppercase opacity-50">Not</p><p className="mt-2 whitespace-pre-wrap">{selectedOrder.order_note}</p></div>}
 
-                  <div className="mt-5 grid grid-cols-2 gap-3">
+                  <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
                     <button type="button" onClick={() => setSelectedOrder(null)} className="rounded-xl border px-4 py-3">Kapat</button>
                     <button type="button" onClick={printSelected} disabled={selectedItems.length === 0} className="rounded-xl bg-[#6e1f12] px-4 py-3 font-bold text-white disabled:opacity-40">Tekrar Yazdır</button>
+                    <a href={`/pos/invoices?order=${selectedOrder.id}`} className="rounded-xl bg-green-700 px-4 py-3 text-center font-bold text-white">Fatura Aç</a>
                   </div>
                 </>
               )}
