@@ -50,7 +50,7 @@ type RetroCandidate = {
   id: number;
   receiptNumber: string | null;
   customerName: string;
-  source: "trendyol" | "yemeksepeti";
+  source: "web" | "trendyol" | "yemeksepeti";
   paymentMethod: string | null;
   total: number;
   closedAt: string;
