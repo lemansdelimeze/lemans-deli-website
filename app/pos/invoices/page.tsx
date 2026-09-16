@@ -96,7 +96,7 @@ export default function PosInvoicesPage() {
   const [retroGrossTotal, setRetroGrossTotal] = useState(0);
   const [retroTitle, setRetroTitle] = useState("Geçmiş Online Tahsilat Önizlemesi");
   const [retroFilters, setRetroFilters] = useState({
-    source: "trendyol" as "all" | "trendyol" | "yemeksepeti",
+    source: "trendyol" as "all" | "web" | "trendyol" | "yemeksepeti",
     payment: "all" as "all" | "online" | "card" | "cash" | "meal_card",
     from: "2026-07-01",
     until: "2026-09-14",
@@ -129,6 +129,7 @@ export default function PosInvoicesPage() {
 
       const sourceLabel = retroFilters.source === "all"
         ? "Tüm kanallar"
+        : retroFilters.source === "web" ? "Website"
         : retroFilters.source === "trendyol" ? "Trendyol Go" : "Yemeksepeti";
       const paymentLabel = retroFilters.payment === "all"
         ? "Tüm online ödemeler"
