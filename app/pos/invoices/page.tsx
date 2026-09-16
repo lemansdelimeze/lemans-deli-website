@@ -92,6 +92,7 @@ export default function PosInvoicesPage() {
   const [filter, setFilter] = useState<"all" | "waiting" | "sent">("all");
   const [retroCandidates, setRetroCandidates] = useState<RetroCandidate[] | null>(null);
   const [retroGrossTotal, setRetroGrossTotal] = useState(0);
+  const [retroTitle, setRetroTitle] = useState("Geçmiş Online Tahsilat Önizlemesi");
   const [retroLoading, setRetroLoading] = useState(false);
   const [xmlPreview, setXmlPreview] = useState<{ receiptNumber: string | null; xml: string } | null>(null);
 
@@ -109,14 +110,19 @@ export default function PosInvoicesPage() {
     });
   }
 
-  async function loadRetroCandidates() {
+  async function loadRetroCandidates(filters?: { source?: "trendyol" | "yemeksepeti"; until?: string; title?: string }) {
     setRetroLoading(true);
     try {
-      const response = await retroRequest("/api/integrations/luca/retro-preview");
+      const params = new URLSearchParams();
+      if (filters?.source) params.set("source", filters.source);
+      if (filters?.until) params.set("until", filters.until);
+      const query = params.toString();
+      const response = await retroRequest(`/api/integrations/luca/retro-preview${query ? `?${query}` : ""}`);
       const result = await response.json();
       if (!response.ok || !result.ok) throw new Error(result.error || "Önizleme listesi alınamadı.");
       setRetroCandidates(result.candidates || []);
       setRetroGrossTotal(Number(result.grossTotal || 0));
+      setRetroTitle(filters?.title || "Geçmiş Online Tahsilat Önizlemesi");
     } catch (error) {
       alert(error instanceof Error ? error.message : "Önizleme listesi alınamadı.");
     } finally {
@@ -306,11 +312,23 @@ export default function PosInvoicesPage() {
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
+              onClick={() => void loadRetroCandidates({
+                source: "trendyol",
+                until: "2026-09-14",
+                title: "Trendyol Go · online ödeme · 14 Eylül 2026'ya kadar",
+              })}
+              disabled={retroLoading}
+              className="rounded-xl bg-[#6e1f12] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+            >
+              {retroLoading ? "Online ödemeler taranıyor..." : "Trendyol Online · 14 Eylüle Kadar"}
+            </button>
+            <button
+              type="button"
               onClick={() => void loadRetroCandidates()}
               disabled={retroLoading}
               className="rounded-xl border border-[#6e1f12]/20 bg-[#fff8ef] px-4 py-2 text-sm font-semibold text-[#6e1f12] disabled:opacity-50"
             >
-              {retroLoading ? "Online ödemeler taranıyor..." : "Geçmiş Online Ödemeleri Önizle"}
+              Tüm Geçmiş Online Ödemeler
             </button>
             <button
               onClick={() => void loadOrders()}
@@ -337,7 +355,7 @@ export default function PosInvoicesPage() {
           <section className="mb-6 overflow-hidden rounded-3xl border border-[#6e1f12]/20 bg-white">
             <div className="flex flex-col gap-2 border-b bg-[#fff8ef] px-5 py-4 md:flex-row md:items-center md:justify-between">
               <div>
-                <h2 className="font-bold text-[#6e1f12]">Geçmiş Online Tahsilat Önizlemesi</h2>
+                <h2 className="font-bold text-[#6e1f12]">{retroTitle}</h2>
                 <p className="mt-1 text-sm opacity-60">Yemeksepeti ve Trendyol Go&apos;da online ödenmiş, henüz faturalanmamış kapanmış siparişler. Bu ekran LUCA&apos;ya gönderim yapmaz.</p>
               </div>
               <p className="shrink-0 text-lg font-bold text-[#6e1f12]">{retroCandidates.length} sipariş · {money(retroGrossTotal)} ₺</p>
