@@ -31,7 +31,7 @@ function isOnlinePlatformPayment(order: {
   payment_method: string | null;
   external_payload: unknown;
 }) {
-  if (!["trendyol", "yemeksepeti"].includes(String(order.source))) {
+  if (!["web", "trendyol", "yemeksepeti"].includes(String(order.source))) {
     return false;
   }
 
