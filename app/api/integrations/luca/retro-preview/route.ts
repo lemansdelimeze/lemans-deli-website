@@ -29,12 +29,10 @@ async function authorize(request: NextRequest) {
   return Boolean(staff?.active && ["admin", "owner"].includes(String(staff.role)));
 }
 
-function isOnlineMarketplacePayment(order: {
-  source: string | null;
+function onlinePaymentKind(order: {
   payment_method: string | null;
   external_payload: unknown;
 }) {
-  if (!['trendyol', 'yemeksepeti'].includes(String(order.source))) return false;
   const payment = order.external_payload && typeof order.external_payload === 'object'
     ? (order.external_payload as { payment?: { type?: unknown; paymentType?: unknown } }).payment
     : null;
@@ -42,7 +40,18 @@ function isOnlineMarketplacePayment(order: {
     .filter((value): value is string => typeof value === 'string')
     .join(' ')
     .toLocaleLowerCase('tr-TR');
-  return text.includes('online') || text.includes('pay_with_card');
+  if (text.includes('pay_with_card')) return 'pay_with_card';
+  if (text.includes('online')) return 'online';
+  return null;
+}
+
+function isOnlineMarketplacePayment(order: {
+  source: string | null;
+  payment_method: string | null;
+  external_payload: unknown;
+}) {
+  return ['trendyol', 'yemeksepeti'].includes(String(order.source)) &&
+    onlinePaymentKind(order) !== null;
 }
 
 export async function GET(request: NextRequest) {
@@ -50,13 +59,20 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ ok: false, error: "Fatura önizleme yetkiniz bulunmuyor." }, { status: 403 });
   }
 
-  const source = request.nextUrl.searchParams.get("source");
+  const source = request.nextUrl.searchParams.get("source") || "all";
+  const payment = request.nextUrl.searchParams.get("payment") || "all";
+  const from = request.nextUrl.searchParams.get("from");
   const until = request.nextUrl.searchParams.get("until");
-  if (source && !["trendyol", "yemeksepeti"].includes(source)) {
-    return NextResponse.json({ ok: false, error: "Geçersiz sipariş kaynağı." }, { status: 400 });
+  const datePattern = /^\\d{4}-\\d{2}-\\d{2}$/;
+
+  if (!["all", "trendyol", "yemeksepeti"].includes(source)) {
+    return NextResponse.json({ ok: false, error: "Geçersiz sipariş kanalı." }, { status: 400 });
   }
-  if (until && !/^\\d{4}-\\d{2}-\\d{2}$/.test(until)) {
-    return NextResponse.json({ ok: false, error: "Bitiş tarihi YYYY-AA-GG formatında olmalı." }, { status: 400 });
+  if (!["all", "online", "pay_with_card"].includes(payment)) {
+    return NextResponse.json({ ok: false, error: "Geçersiz ödeme türü." }, { status: 400 });
+  }
+  if ((from && !datePattern.test(from)) || (until && !datePattern.test(until))) {
+    return NextResponse.json({ ok: false, error: "Tarih YYYY-AA-GG formatında olmalı." }, { status: 400 });
   }
 
   let query = supabaseAdmin
@@ -66,10 +82,13 @@ export async function GET(request: NextRequest) {
     .neq("invoice_status", "sent")
     .order("closed_at", { ascending: true });
 
-  query = source
-    ? query.eq("source", source)
-    : query.in("source", ["trendyol", "yemeksepeti"]);
+  query = source === "all"
+    ? query.in("source", ["trendyol", "yemeksepeti"])
+    : query.eq("source", source);
 
+  if (from) {
+    query = query.gte("closed_at", new Date(`${from}T00:00:00+03:00`).toISOString());
+  }
   if (until) {
     const end = new Date(`${until}T00:00:00+03:00`);
     end.setDate(end.getDate() + 1);
@@ -79,7 +98,10 @@ export async function GET(request: NextRequest) {
   const { data, error } = await query;
   if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
 
-  const candidates = (data ?? []).filter(isOnlineMarketplacePayment).map((order) => ({
+  const candidates = (data ?? [])
+    .filter(isOnlineMarketplacePayment)
+    .filter((order) => payment === "all" || onlinePaymentKind(order) === payment)
+    .map((order) => ({
     id: order.id,
     receiptNumber: order.receipt_number,
     customerName: order.customer_name || "Nihai Tüketici",
@@ -88,6 +110,7 @@ export async function GET(request: NextRequest) {
     total: Number(order.total || 0),
     closedAt: order.closed_at || order.created_at,
     invoiceStatus: order.invoice_status || "none",
+    paymentKind: onlinePaymentKind(order),
   }));
   return NextResponse.json({
     ok: true,
