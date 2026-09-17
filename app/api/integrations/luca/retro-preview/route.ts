@@ -30,6 +30,7 @@ async function authorize(request: NextRequest) {
 }
 
 function paymentCategory(order: {
+  source: string | null;
   payment_method: string | null;
   external_payload: unknown;
 }) {
@@ -41,7 +42,11 @@ function paymentCategory(order: {
     .join(' ')
     .toLocaleLowerCase('tr-TR');
 
-  if (text.includes('pay_with_card') || text.includes('online')) return 'online';
+  if (
+    text.includes('pay_with_card') ||
+    text.includes('online') ||
+    (order.source === 'trendyol' && (text.includes('card') || text.includes('kredi kart')))
+  ) return 'online';
   if (text.includes('setcard') || text.includes('edenred') || text.includes('pluxee') || text.includes('meal_card') || text.includes('yemek kart')) return 'meal_card';
   if (text.includes('cash') || text.includes('nakit')) return 'cash';
   if (text.includes('card') || text.includes('kredi kart')) return 'card';
