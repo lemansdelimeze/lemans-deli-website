@@ -66,7 +66,7 @@ export async function GET(request: NextRequest) {
   const payment = request.nextUrl.searchParams.get("payment") || "all";
   const from = request.nextUrl.searchParams.get("from");
   const until = request.nextUrl.searchParams.get("until");
-  const datePattern = /^\\d{4}-\\d{2}-\\d{2}$/;
+  const datePattern = /^\d{4}-\d{2}-\d{2}$/;
 
   if (!["all", "web", "trendyol", "yemeksepeti"].includes(source)) {
     return NextResponse.json({ ok: false, error: "Geçersiz sipariş kanalı." }, { status: 400 });
