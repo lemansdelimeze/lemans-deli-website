@@ -48,7 +48,11 @@ function isOnlinePlatformPayment(order: {
     .join(" ")
     .toLocaleLowerCase("tr-TR");
 
-  return value.includes("online") || value.includes("pay_with_card");
+  return (
+    value.includes("online") ||
+    value.includes("pay_with_card") ||
+    value.includes("kredi kart")
+  );
 }
 
 export async function POST(request: NextRequest) {
@@ -105,7 +109,10 @@ export async function POST(request: NextRequest) {
   if (order.invoice_status === "sent") {
     return NextResponse.json({ ok: true, status: "already_sent" });
   }
-  if (!body.manual && order.invoice_status !== "none") {
+  if (!body.manual && order.invoice_status === "sending") {
+    return NextResponse.json({ ok: true, status: "already_processing" });
+  }
+  if (!body.manual && !["none", "failed"].includes(order.invoice_status || "none")) {
     return NextResponse.json({ ok: true, status: "not_automatic" });
   }
   if (body.manual && !["ready", "failed"].includes(String(order.invoice_status))) {
@@ -122,7 +129,7 @@ export async function POST(request: NextRequest) {
       invoice_created_at: new Date().toISOString(),
     })
     .eq("id", order.id)
-    .in("invoice_status", body.manual ? ["ready", "failed"] : ["none"])
+    .in("invoice_status", body.manual ? ["ready", "failed"] : ["none", "failed"])
     .select("id")
     .maybeSingle();
 

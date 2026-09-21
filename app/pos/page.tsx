@@ -50,6 +50,9 @@ type IncomingOrder = {
   external_status: string | null;
   external_payload: unknown | null;
   pos_stage: string | null;
+  invoice_status?: string | null;
+  invoice_number?: string | null;
+  invoice_error?: string | null;
   created_at: string;
 };
 
@@ -225,7 +228,7 @@ const [trendyolAutoSync, setTrendyolAutoSync] = useState(true);  const [newOrder
       supabase.from("pos_orders").select("id,table_id,total").eq("status", "open"),
       supabase
         .from("pos_orders")
-        .select("id,receipt_number,order_type,table_id,customer_name,customer_phone,delivery_address,order_note,subtotal,discount_amount,total,payment_method,status,source,external_order_id,external_status,external_payload,pos_stage,created_at")
+        .select("id,receipt_number,order_type,table_id,customer_name,customer_phone,delivery_address,order_note,subtotal,discount_amount,total,payment_method,status,source,external_order_id,external_status,external_payload,pos_stage,invoice_status,invoice_number,invoice_error,created_at")
         .eq("status", "open")
         .in("source", ["web", "trendyol", "yemeksepeti", "pos"])
         .in("order_type", ["Paket", "Gel-Al", "Gel Al"])
@@ -271,7 +274,7 @@ const [trendyolAutoSync, setTrendyolAutoSync] = useState(true);  const [newOrder
     const { data, error } = await supabase
       .from("pos_orders")
       .select(
-        "id,receipt_number,order_type,table_id,customer_name,customer_phone,delivery_address,order_note,subtotal,discount_amount,total,payment_method,status,source,external_order_id,external_status,external_payload,pos_stage,created_at"
+        "id,receipt_number,order_type,table_id,customer_name,customer_phone,delivery_address,order_note,subtotal,discount_amount,total,payment_method,status,source,external_order_id,external_status,external_payload,pos_stage,invoice_status,invoice_number,invoice_error,created_at"
       )
       .eq("status", "open")
       .in("source", ["web", "trendyol", "yemeksepeti", "pos"])
@@ -941,11 +944,27 @@ await loadIncomingOrdersOnly();
       const result = await response.json();
 
       if (!response.ok || !result.ok) {
-        console.error("LUCA otomatik fatura gönderilemedi:", result.error || result);
+        return { ok: false, error: result.error || "LUCA faturası gönderilemedi." };
       }
+      return { ok: true, status: String(result.status || ""), invoiceNumber: result.invoiceNumber as string | undefined };
     } catch (error) {
       console.error("LUCA otomatik fatura isteği gönderilemedi:", error);
+      return { ok: false, error: "LUCA faturası gönderilemedi." };
     }
+  }
+
+  async function closeInvoiceMessage(order: IncomingOrder) {
+    if (!['trendyol', 'yemeksepeti'].includes(String(order.source))) return "";
+    const invoice = await requestLucaAutoInvoice(order.id);
+    if (!invoice.ok) {
+      alert(`Sipariş kapandı fakat fatura kesilemedi. Siparişler ekranında “Fatura başarısız” olarak görünecek.\n\n${invoice.error}`);
+      return " · Fatura başarısız";
+    }
+    if (invoice.status === "sent") return ` · Fatura kesildi${invoice.invoiceNumber ? `: ${invoice.invoiceNumber}` : ""}`;
+    if (invoice.status === "already_sent") return " · Fatura zaten kesilmiş";
+    if (invoice.status === "out_of_scope") return "";
+    if (invoice.status === "disabled") return " · Otomatik fatura kapalı";
+    return " · Fatura kontrol ediliyor";
   }
 
   async function acceptIncomingOrder(order: IncomingOrder) {
@@ -991,10 +1010,10 @@ await loadIncomingOrdersOnly();
         return;
       }
 
+      const invoiceMessage = await closeInvoiceMessage(order);
       setChannelMessage(
-        `TRENDYOL GO ${order.receipt_number || `#${order.id}`} teslim edildi olarak bildirildi.`
+        `TRENDYOL GO ${order.receipt_number || `#${order.id}`} teslim edildi olarak bildirildi.${invoiceMessage}`
       );
-      void requestLucaAutoInvoice(order.id);
       await loadData();
       return;
     }
@@ -1014,14 +1033,12 @@ await loadIncomingOrdersOnly();
       return;
     }
 
-    if (order.source === "yemeksepeti") {
-      void requestLucaAutoInvoice(order.id);
-    }
+    const invoiceMessage = await closeInvoiceMessage(order);
 
     setChannelMessage(
       `${sourceLabel(order.source)} ${
         order.receipt_number || `#${order.id}`
-      } ${completionLabel} olarak kapatıldı.`
+      } ${completionLabel} olarak kapatıldı.${invoiceMessage}`
     );
 
     await loadData();

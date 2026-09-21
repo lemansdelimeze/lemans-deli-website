@@ -22,6 +22,9 @@ type PosOrder = {
   card_amount: number;
   meal_card_amount: number;
   internal_reason: string | null;
+  invoice_status: "none" | "draft" | "ready" | "sending" | "sent" | "failed" | "cancelled" | null;
+  invoice_number: string | null;
+  invoice_error: string | null;
   created_at: string;
   closed_at: string | null;
 };
@@ -93,6 +96,7 @@ export default function PosOrdersPage() {
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [retryingInvoice, setRetryingInvoice] = useState(false);
 
   const loadOrders = useCallback(async () => {
     setLoading(true);
@@ -103,7 +107,7 @@ export default function PosOrdersPage() {
         id, receipt_number, order_type, table_id, customer_name, order_note,
         subtotal, discount_amount, total, payment_method,
         cash_amount, card_amount, meal_card_amount,
-        internal_reason, created_at, closed_at
+        internal_reason, invoice_status, invoice_number, invoice_error, created_at, closed_at
       `)
       .eq("status", "closed")
       .order("closed_at", { ascending: false });
@@ -207,6 +211,39 @@ export default function PosOrdersPage() {
     window.setTimeout(() => window.print(), 100);
   }
 
+  async function retryInvoice(order: PosOrder) {
+    setRetryingInvoice(true);
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      const response = await fetch("/api/integrations/luca/auto-invoice", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session?.access_token || ""}`,
+        },
+        body: JSON.stringify({ orderId: order.id }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.ok) {
+        throw new Error(result.error || "Fatura yeniden gönderilemedi.");
+      }
+      alert(
+        result.status === "sent"
+          ? `Fatura kesildi${result.invoiceNumber ? `: ${result.invoiceNumber}` : "."}`
+          : result.status === "already_sent"
+            ? "Bu siparişin faturası zaten kesilmiş."
+            : "Bu sipariş otomatik faturalama kapsamında değil."
+      );
+      await loadOrders();
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Fatura yeniden gönderilemedi.");
+    } finally {
+      setRetryingInvoice(false);
+    }
+  }
+
   return (
     <>
       <style jsx global>{`
@@ -271,7 +308,7 @@ export default function PosOrdersPage() {
             ) : (
               <div className="divide-y divide-black/8">
                 {filteredOrders.map((order) => (
-                  <button key={order.id} type="button" onClick={() => void openOrder(order)} className="grid w-full gap-3 px-5 py-4 text-left hover:bg-[#f4efe5]/60 md:grid-cols-[1.2fr_1fr_1fr_auto] md:items-center">
+                  <button key={order.id} type="button" onClick={() => void openOrder(order)} className="grid w-full gap-3 px-5 py-4 text-left hover:bg-[#f4efe5]/60 md:grid-cols-[1.2fr_1fr_1fr_1fr_auto] md:items-center">
                     <div>
                       <p className="font-bold text-[#6e1f12]" style={{ fontFamily: BRAND_FONT }}>{order.receipt_number}</p>
                       <p className="mt-1 text-xs opacity-45">{new Date(order.closed_at ?? order.created_at).toLocaleString("tr-TR")}</p>
@@ -284,6 +321,7 @@ export default function PosOrdersPage() {
                       <p className="font-semibold">{PAYMENT_LABELS[order.payment_method] ?? order.payment_method}</p>
                       {order.internal_reason && <p className="mt-1 text-xs opacity-50">{order.internal_reason}</p>}
                     </div>
+                    <InvoiceStatus order={order} />
                     <div className="md:text-right">
                       <p className="text-lg font-bold">{money(order.total)} ₺</p>
                       {Number(order.discount_amount) > 0 && <p className="text-xs text-[#6e1f12]">-{money(order.discount_amount)} ₺ indirim</p>}
@@ -331,6 +369,19 @@ export default function PosOrdersPage() {
 
                   {selectedOrder.order_note && <div className="mt-4 rounded-xl border p-4"><p className="text-xs font-bold uppercase opacity-50">Not</p><p className="mt-2 whitespace-pre-wrap">{selectedOrder.order_note}</p></div>}
 
+                  <div className="mt-4 rounded-xl border border-[#6e1f12]/15 bg-[#f4efe5] p-4">
+                    <p className="text-xs font-bold uppercase opacity-50">Fatura</p>
+                    <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
+                      <InvoiceStatus order={selectedOrder} />
+                      {selectedOrder.invoice_status === "failed" && (
+                        <button type="button" onClick={() => void retryInvoice(selectedOrder)} disabled={retryingInvoice} className="rounded-xl bg-[#6e1f12] px-4 py-2 text-sm font-bold text-white disabled:opacity-40">
+                          {retryingInvoice ? "Tekrar deneniyor..." : "Faturayı Tekrar Dene"}
+                        </button>
+                      )}
+                    </div>
+                    {selectedOrder.invoice_error && <p className="mt-2 text-sm text-red-700">{selectedOrder.invoice_error}</p>}
+                  </div>
+
                   <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
                     <button type="button" onClick={() => setSelectedOrder(null)} className="rounded-xl border px-4 py-3">Kapat</button>
                     <button type="button" onClick={printSelected} disabled={selectedItems.length === 0} className="rounded-xl bg-[#6e1f12] px-4 py-3 font-bold text-white disabled:opacity-40">Tekrar Yazdır</button>
@@ -377,6 +428,22 @@ export default function PosOrdersPage() {
       </main>
     </>
   );
+}
+
+function InvoiceStatus({ order }: { order: PosOrder }) {
+  if (order.invoice_status === "sent") {
+    return <p className="text-sm font-semibold text-emerald-700">Fatura kesildi{order.invoice_number ? ` · ${order.invoice_number}` : ""}</p>;
+  }
+  if (order.invoice_status === "failed") {
+    return <p className="text-sm font-semibold text-red-700">Fatura başarısız</p>;
+  }
+  if (order.invoice_status === "sending") {
+    return <p className="text-sm font-semibold text-amber-700">Fatura kesiliyor...</p>;
+  }
+  if (["draft", "ready"].includes(order.invoice_status || "")) {
+    return <p className="text-sm font-semibold text-amber-700">Fatura bekliyor</p>;
+  }
+  return <p className="text-sm opacity-45">Fatura yok</p>;
 }
 
 function Summary({ label, value }: { label: string; value: string }) {
