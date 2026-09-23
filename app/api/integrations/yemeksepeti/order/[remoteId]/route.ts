@@ -129,16 +129,36 @@ function orderNoteOf(payload: DeliveryHeroOrder) {
   return notes.join("\n") || null;
 }
 
-function verifyMiddlewareJwt(request: NextRequest) {
+type MiddlewareJwtCheck = {
+  valid: boolean;
+  reason:
+    | "valid"
+    | "secret_missing"
+    | "authorization_missing"
+    | "token_format_invalid"
+    | "token_payload_invalid"
+    | "claims_invalid"
+    | "token_expired"
+    | "signature_mismatch";
+  alg?: string;
+  service?: string;
+  exp?: number;
+  now?: number;
+};
+
+function verifyMiddlewareJwt(request: NextRequest): MiddlewareJwtCheck {
   const secret = process.env.YEMEKSEPETI_MIDDLEWARE_SECRET;
   const authorization = request.headers.get("authorization") ?? "";
 
-  if (!secret || !authorization.startsWith("Bearer ")) return false;
+  if (!secret) return { valid: false, reason: "secret_missing" };
+  if (!authorization.startsWith("Bearer ")) {
+    return { valid: false, reason: "authorization_missing" };
+  }
 
   const token = authorization.slice("Bearer ".length).trim();
   const parts = token.split(".");
 
-  if (parts.length !== 3) return false;
+  if (parts.length !== 3) return { valid: false, reason: "token_format_invalid" };
 
   try {
     const [headerPart, payloadPart, signaturePart] = parts;
@@ -151,26 +171,57 @@ function verifyMiddlewareJwt(request: NextRequest) {
     ) as { service?: string; exp?: number };
 
     if (header.alg !== "HS512" || payload.service !== "middleware") {
-      return false;
+      return {
+        valid: false,
+        reason: "claims_invalid",
+        alg: header.alg,
+        service: payload.service,
+        exp: payload.exp,
+      };
     }
 
-    if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) {
-      return false;
+    const now = Math.floor(Date.now() / 1000);
+    if (payload.exp && payload.exp <= now) {
+      return {
+        valid: false,
+        reason: "token_expired",
+        alg: header.alg,
+        service: payload.service,
+        exp: payload.exp,
+        now,
+      };
     }
 
     const expected = createHmac("sha512", secret)
       .update(`${headerPart}.${payloadPart}`)
-      .digest("base64url");
+      .digest();
 
-    const receivedBuffer = Buffer.from(signaturePart);
-    const expectedBuffer = Buffer.from(expected);
+    const receivedBuffer = Buffer.from(signaturePart, "base64url");
 
-    return (
-      receivedBuffer.length === expectedBuffer.length &&
-      timingSafeEqual(receivedBuffer, expectedBuffer)
-    );
+    if (
+      receivedBuffer.length !== expected.length ||
+      !timingSafeEqual(receivedBuffer, expected)
+    ) {
+      return {
+        valid: false,
+        reason: "signature_mismatch",
+        alg: header.alg,
+        service: payload.service,
+        exp: payload.exp,
+        now,
+      };
+    }
+
+    return {
+      valid: true,
+      reason: "valid",
+      alg: header.alg,
+      service: payload.service,
+      exp: payload.exp,
+      now,
+    };
   } catch {
-    return false;
+    return { valid: false, reason: "token_payload_invalid" };
   }
 }
 
@@ -202,12 +253,18 @@ export async function POST(
 ) {
   const { remoteId } = await params;
   const configuredRemoteId = process.env.YEMEKSEPETI_REMOTE_ID;
+  const jwt = verifyMiddlewareJwt(request);
 
-console.info("YS inbound kontrolü", {
-  remoteId,
-  remoteIdMatches: remoteId === configuredRemoteId,
-  jwtValid: verifyMiddlewareJwt(request),
-});
+  console.info("YS inbound kontrolü", {
+    remoteId,
+    remoteIdMatches: remoteId === configuredRemoteId,
+    jwtValid: jwt.valid,
+    jwtReason: jwt.reason,
+    alg: jwt.alg,
+    service: jwt.service,
+    exp: jwt.exp,
+    now: jwt.now,
+  });
 
   if (!configuredRemoteId || remoteId !== configuredRemoteId) {
   console.error("YS siparişi reddedildi: Remote ID", {
@@ -221,11 +278,14 @@ console.info("YS inbound kontrolü", {
   );
 }
 
-if (!verifyMiddlewareJwt(request)) {
+if (!jwt.valid) {
   console.error("YS siparişi reddedildi: JWT", {
     remoteId,
     secretConfigured: Boolean(process.env.YEMEKSEPETI_MIDDLEWARE_SECRET),
     authorizationPresent: Boolean(request.headers.get("authorization")),
+    jwtReason: jwt.reason,
+    exp: jwt.exp,
+    now: jwt.now,
   });
 
   return NextResponse.json(
