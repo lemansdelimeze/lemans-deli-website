@@ -65,6 +65,17 @@ function textValue(value?: string | null) {
   return value?.trim() || null;
 }
 
+/** POS Plugin must receive a top-level JSON acknowledgement. */
+function orderAcceptedResponse(orderId: string) {
+  return new Response(JSON.stringify({ remoteOrderId: orderId }), {
+    status: 200,
+    headers: {
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "no-store",
+    },
+  });
+}
+
 function formatTurkeyTime(value?: string | null) {
   if (!value) return null;
 
@@ -315,9 +326,7 @@ if (!jwt.valid) {
     if (existingError) throw existingError;
 
     if (existing) {
-      return NextResponse.json({
-        remoteResponse: { remoteOrderId: String(existing.id) },
-      });
+      return orderAcceptedResponse(String(existing.id));
     }
 
     const rows = await Promise.all(
@@ -409,9 +418,7 @@ if (!jwt.valid) {
       processed_at: new Date().toISOString(),
     });
 
-    return NextResponse.json({
-      remoteResponse: { remoteOrderId: String(order.id) },
-    });
+    return orderAcceptedResponse(String(order.id));
   } catch (error) {
     console.error("Yemeksepeti sipariş alma hatası:", error);
 
