@@ -62,7 +62,7 @@ const pageTranslations = {
     phoneLabel: "Telefon",
     emailLabel: "E-posta",
     hoursLabel: "Saatler",
-    hours: "Pazartesi – Cumartesi 09:00 – 21:00 · Pazar kapalı",
+    hours: "Pazartesi – Cumartesi 09:00 – 21:00\nPazar kapalı",
     pet: "Evcil hayvan dostu",
     card: "Kredi kartı geçerlidir",
     delivery: "Paket servis ve gel-al mevcuttur",
@@ -131,7 +131,7 @@ const pageTranslations = {
     phoneLabel: "Phone",
     emailLabel: "Email",
     hoursLabel: "Hours",
-    hours: "Monday – Saturday 09:00 – 21:00 · Closed Sunday",
+    hours: "Monday – Saturday 09:00 – 21:00\nClosed Sunday",
     pet: "Pet friendly",
     card: "Credit cards accepted",
     delivery: "Delivery and takeaway available",
@@ -200,7 +200,7 @@ const pageTranslations = {
     phoneLabel: "Телефон",
     emailLabel: "Эл. почта",
     hoursLabel: "Часы работы",
-    hours: "Пн – Сб 09:00 – 21:00 · Воскресенье: закрыто",
+    hours: "Пн – Сб 09:00 – 21:00\nВоскресенье: закрыто",
     pet: "Можно с животными",
     card: "Принимаем банковские карты",
     delivery: "Доставка и еда навынос",
@@ -555,7 +555,7 @@ const selections = [
               <p className="mb-2 text-xs uppercase tracking-[0.25em] text-[#e7b69c]">
                 {text.hoursLabel}
               </p>
-              <p className="text-xl">{text.hours}</p>
+              <p className="text-xl whitespace-pre-line">{text.hours}</p>
             </div>
           </div>
 
