@@ -59,6 +59,9 @@ const pageTranslations = {
     phone: "+90 530 700 57 04",
     email: "info@lemansdeli.com",
     instagramAccount: "@lemansdeli",
+    phoneLabel: "Telefon",
+    emailLabel: "E-posta",
+    hoursLabel: "Saatler",
     hours: "Pazartesi – Cumartesi 09:00 – 21:00 · Pazar kapalı",
     pet: "Evcil hayvan dostu",
     card: "Kredi kartı geçerlidir",
@@ -125,6 +128,9 @@ const pageTranslations = {
     phone: "+90 530 700 57 04",
     email: "info@lemansdeli.com",
     instagramAccount: "@lemansdeli",
+    phoneLabel: "Phone",
+    emailLabel: "Email",
+    hoursLabel: "Hours",
     hours: "Monday – Saturday 09:00 – 21:00 · Closed Sunday",
     pet: "Pet friendly",
     card: "Credit cards accepted",
@@ -191,6 +197,9 @@ const pageTranslations = {
     phone: "+90 530 700 57 04",
     email: "info@lemansdeli.com",
     instagramAccount: "@lemansdeli",
+    phoneLabel: "Телефон",
+    emailLabel: "Эл. почта",
+    hoursLabel: "Часы работы",
     hours: "Пн – Сб 09:00 – 21:00 · Воскресенье: закрыто",
     pet: "Можно с животными",
     card: "Принимаем банковские карты",
@@ -515,7 +524,7 @@ const selections = [
               className="rounded-3xl border border-white/10 bg-white/5 p-7 transition hover:border-[#e7b69c]/50 hover:bg-white/10"
             >
               <p className="mb-2 text-xs uppercase tracking-[0.25em] text-[#e7b69c]">
-                Telefon
+                {text.phoneLabel}
               </p>
               <p className="text-xl">{text.phone}</p>
             </a>
@@ -525,7 +534,7 @@ const selections = [
               className="rounded-3xl border border-white/10 bg-white/5 p-7 transition hover:border-[#e7b69c]/50 hover:bg-white/10"
             >
               <p className="mb-2 text-xs uppercase tracking-[0.25em] text-[#e7b69c]">
-                E-mail
+                {text.emailLabel}
               </p>
               <p className="text-xl">{text.email}</p>
             </a>
@@ -544,7 +553,7 @@ const selections = [
 
             <div className="rounded-3xl border border-white/10 bg-white/5 p-7">
               <p className="mb-2 text-xs uppercase tracking-[0.25em] text-[#e7b69c]">
-                Saatler
+                {text.hoursLabel}
               </p>
               <p className="text-xl">{text.hours}</p>
             </div>
