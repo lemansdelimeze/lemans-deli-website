@@ -64,7 +64,7 @@ export default function Gallery() {
       imageHeight: "h-[420px] md:h-full",
     },
     {
-      src: "/gallery-4.jpg",
+      src: "/gallery-4.jpeg",
       alt: text.image4,
       label: text.image4,
       className: "md:col-span-1 md:row-span-1",
