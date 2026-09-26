@@ -8,7 +8,7 @@ export const WEIGHT_CATEGORIES = new Set(["sarkuteri", "peynir"]);
 
 export const PAYMENT_LABELS: Record<PaymentMethod, string> = {
   cash: "Nakit",
-  card: "Kapıda Kredi Kartı",
+  card: "Kredi Kartı",
   online: "Online Ödeme / CepPOS",
   edenred: "Edenred",
   setcard: "Setcard",

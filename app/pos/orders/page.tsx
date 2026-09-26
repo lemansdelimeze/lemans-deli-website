@@ -23,6 +23,7 @@ type PosOrder = {
   discount_amount: number | null;
   total: number;
   payment_method: string;
+  source: string | null;
   cash_amount: number;
   card_amount: number;
   meal_card_amount: number;
@@ -50,7 +51,7 @@ type PosTable = { id: number; name: string };
 const BRAND_FONT = '"American Typewriter", "Courier New", Courier, monospace';
 const PAYMENT_LABELS: Record<string, string> = {
   cash: "Nakit",
-  card: "Kapıda Kredi Kartı",
+  card: "Kredi Kartı",
   online: "Online Ödeme / CepPOS",
   edenred: "Edenred",
   setcard: "Setcard",
@@ -98,7 +99,7 @@ export default function PosOrdersPage() {
       .from("pos_orders")
       .select(`
         id, receipt_number, order_type, table_id, customer_name, order_note,
-        subtotal, discount_amount, total, payment_method,
+        subtotal, discount_amount, total, payment_method, source,
         cash_amount, card_amount, meal_card_amount,
         internal_reason, invoice_status, invoice_number, invoice_error, created_at, closed_at
       `)
@@ -288,7 +289,7 @@ export default function PosOrdersPage() {
               <select value={paymentFilter} onChange={(e) => setPaymentFilter(e.target.value as PaymentFilter)} className="rounded-xl border bg-white px-4 py-3">
                 <option value="all">Tüm Ödemeler</option>
                 <option value="cash">Nakit</option>
-                <option value="card">Kapıda Kredi Kartı</option>
+                <option value="card">Kredi Kartı</option>
                 <option value="online">Online Ödeme / CepPOS</option>
                 <option value="edenred">Edenred</option>
                 <option value="setcard">Setcard</option>
@@ -313,6 +314,8 @@ export default function PosOrdersPage() {
                     className={`grid w-full gap-3 border-l-4 px-5 py-4 text-left md:grid-cols-[1.2fr_1fr_1fr_1fr_auto] md:items-center ${
                       order.invoice_status === "sent"
                         ? "border-emerald-600 bg-emerald-50/70 hover:bg-emerald-100/70"
+                        : hasRegisterReceipt(order) && !hasPendingInvoice(order)
+                          ? "border-slate-300 bg-slate-50/70 hover:bg-slate-100/70"
                         : "border-red-500 bg-red-50/70 hover:bg-red-100/70"
                     }`}
                   >
@@ -437,12 +440,23 @@ export default function PosOrdersPage() {
   );
 }
 
+function hasRegisterReceipt(order: PosOrder) {
+  return ["pos", "web"].includes(order.source || "") && ["cash", "card"].includes(order.payment_method);
+}
+
+function hasPendingInvoice(order: PosOrder) {
+  return ["draft", "ready", "sending", "failed"].includes(order.invoice_status || "");
+}
+
 function InvoiceStatus({ order }: { order: PosOrder }) {
   if (order.invoice_status === "sent") {
     return <p className="rounded-lg bg-emerald-100 px-2 py-1 text-sm font-semibold text-emerald-800">Fatura gönderildi{order.invoice_number ? ` · ${order.invoice_number}` : ""}</p>;
   }
   if (order.invoice_status === "failed") {
     return <p className="rounded-lg bg-red-100 px-2 py-1 text-sm font-semibold text-red-800">Fatura gönderilemedi</p>;
+  }
+  if (hasRegisterReceipt(order) && !hasPendingInvoice(order)) {
+    return <p className="rounded-lg bg-slate-100 px-2 py-1 text-sm font-semibold text-slate-700">Yazarkasa fişi</p>;
   }
   if (order.invoice_status === "sending") {
     return <p className="rounded-lg bg-red-100 px-2 py-1 text-sm font-semibold text-red-800">Fatura gönderiliyor...</p>;
