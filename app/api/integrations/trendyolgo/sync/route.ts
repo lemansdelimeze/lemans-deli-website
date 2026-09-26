@@ -356,6 +356,13 @@ function posStageForPackage(packageStatus: string) {
   return "new";
 }
 
+function packageUpdatedAt(pkg: TgPackage) {
+  const timestamp = Number(pkg.packageModificationDate || pkg.packageCreationDate || 0);
+  return Number.isFinite(timestamp) && timestamp > 0
+    ? new Date(timestamp).toISOString()
+    : new Date().toISOString();
+}
+
 async function findMenuItemId(productId: number): Promise<number | null> {
   const { data, error } = await supabaseAdmin
     .from("integration_product_mappings")
@@ -394,6 +401,7 @@ export async function POST() {
       const invoice = extractInvoiceData(pkg);
       const posStatus = posStatusForPackage(pkg.packageStatus);
       const posStage = posStageForPackage(pkg.packageStatus);
+      const channelUpdatedAt = packageUpdatedAt(pkg);
 
       const commonValues = {
         customer_name: invoice.customerName,
@@ -431,7 +439,7 @@ export async function POST() {
         if (posStatus === "closed") {
           updates.status = "closed";
           updates.pos_stage = "completed";
-          updates.closed_at = new Date().toISOString();
+          updates.closed_at = channelUpdatedAt;
         } else if (posStatus === "open") {
           // Trendyol'da restoran siparişi kabul ettiyse POS'ta tekrar
           // "Kabul Et" görünmemeli; kanalın aşamasını aynen koru.
@@ -534,7 +542,7 @@ export async function POST() {
           invoice_type: null,
           invoice_status: "none",
           invoice_requested: false,
-          closed_at: posStatus === "closed" ? new Date().toISOString() : null,
+          closed_at: posStatus === "closed" ? channelUpdatedAt : null,
           cancelled_at:
             posStatus === "cancelled" ? new Date().toISOString() : null,
           cancel_reason:

@@ -27,7 +27,16 @@ export type PosTable = {
 
 export type PortionType = "full" | "half" | "unit" | "weight";
 export type OrderType = "Masa" | "Paket" | "Gel-Al";
-export type PaymentMethod = "cash" | "card" | "meal_card" | "mixed" | "internal";
+export type PaymentMethod =
+  | "cash"
+  | "card"
+  | "online"
+  | "edenred"
+  | "setcard"
+  | "pluxee"
+  | "meal_card"
+  | "mixed"
+  | "internal";
 export type DiscountType = "none" | "percent" | "amount";
 
 export type CartItem = MenuItem & {

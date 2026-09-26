@@ -3,9 +3,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "../../../lib/supabase";
 
-type PaymentMethod = "cash" | "card" | "meal_card" | "mixed" | "internal" | "pending";
-type DateFilter = "today" | "yesterday" | "sevenDays" | "all";
-type PaymentFilter = "all" | "cash" | "card" | "meal_card" | "mixed" | "internal";
+type PaymentFilter =
+  | "all"
+  | "cash"
+  | "card"
+  | "online"
+  | "edenred"
+  | "setcard"
+  | "pluxee";
 
 type PosOrder = {
   id: number;
@@ -17,7 +22,7 @@ type PosOrder = {
   subtotal: number;
   discount_amount: number | null;
   total: number;
-  payment_method: PaymentMethod;
+  payment_method: string;
   cash_amount: number;
   card_amount: number;
   meal_card_amount: number;
@@ -45,8 +50,13 @@ type PosTable = { id: number; name: string };
 const BRAND_FONT = '"American Typewriter", "Courier New", Courier, monospace';
 const PAYMENT_LABELS: Record<string, string> = {
   cash: "Nakit",
-  card: "Kredi Kartı",
-  meal_card: "Yemek Kartı",
+  card: "Kapıda Kredi Kartı",
+  online: "Online Ödeme / CepPOS",
+  edenred: "Edenred",
+  setcard: "Setcard",
+  pluxee: "Pluxee",
+  meal_card: "Yemek Kartı (marka bilinmiyor)",
+  "Online Kart Ödemesi": "Online Ödeme / CepPOS",
   mixed: "Karma",
   internal: "İkram / İç Tüketim",
   pending: "Bekliyor",
@@ -59,31 +69,13 @@ function money(value: number | null | undefined) {
   });
 }
 
-function startOfDay(date: Date) {
-  const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  return d;
+function localDateValue(date = new Date()) {
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+  return local.toISOString().slice(0, 10);
 }
 
-function rangeFor(filter: DateFilter) {
-  const now = new Date();
-  if (filter === "all") return null;
-  if (filter === "today") {
-    return {
-      start: startOfDay(now),
-      end: new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1),
-    };
-  }
-  if (filter === "yesterday") {
-    return {
-      start: new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1),
-      end: startOfDay(now),
-    };
-  }
-  return {
-    start: new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6),
-    end: new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1),
-  };
+function startOfLocalDate(value: string) {
+  return new Date(`${value}T00:00:00`);
 }
 
 export default function PosOrdersPage() {
@@ -91,7 +83,8 @@ export default function PosOrdersPage() {
   const [tables, setTables] = useState<PosTable[]>([]);
   const [selectedOrder, setSelectedOrder] = useState<PosOrder | null>(null);
   const [selectedItems, setSelectedItems] = useState<PosOrderItem[]>([]);
-  const [dateFilter, setDateFilter] = useState<DateFilter>("today");
+  const [startDate, setStartDate] = useState(() => localDateValue());
+  const [endDate, setEndDate] = useState(() => localDateValue());
   const [paymentFilter, setPaymentFilter] = useState<PaymentFilter>("all");
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
@@ -112,13 +105,17 @@ export default function PosOrdersPage() {
       .eq("status", "closed")
       .order("closed_at", { ascending: false });
 
-    const range = rangeFor(dateFilter);
-    if (range) {
-      query = query
-        .gte("closed_at", range.start.toISOString())
-        .lt("closed_at", range.end.toISOString());
+    if (startDate) {
+      query = query.gte("closed_at", startOfLocalDate(startDate).toISOString());
     }
-    if (paymentFilter !== "all") {
+    if (endDate) {
+      const end = startOfLocalDate(endDate);
+      end.setDate(end.getDate() + 1);
+      query = query.lt("closed_at", end.toISOString());
+    }
+    if (paymentFilter === "online") {
+      query = query.in("payment_method", ["online", "cep_pos", "ceppos", "Online Kart Ödemesi"]);
+    } else if (paymentFilter !== "all") {
       query = query.eq("payment_method", paymentFilter);
     }
 
@@ -136,7 +133,7 @@ export default function PosOrdersPage() {
     setOrders((ordersResult.data ?? []) as PosOrder[]);
     setTables((tablesResult.data ?? []) as PosTable[]);
     setLoading(false);
-  }, [dateFilter, paymentFilter]);
+  }, [startDate, endDate, paymentFilter]);
 
   useEffect(() => {
     void loadOrders();
@@ -280,21 +277,22 @@ export default function PosOrdersPage() {
           </section>
 
           <section className="mb-5 rounded-3xl border border-[#6e1f12]/10 bg-white p-4">
-            <div className="grid gap-3 lg:grid-cols-[1fr_auto_auto]">
+            <div className="grid gap-3 lg:grid-cols-[1.2fr_auto_auto_auto]">
               <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Adisyon no, müşteri, masa..." className="rounded-xl border px-4 py-3" />
-              <select value={dateFilter} onChange={(e) => setDateFilter(e.target.value as DateFilter)} className="rounded-xl border bg-white px-4 py-3">
-                <option value="today">Bugün</option>
-                <option value="yesterday">Dün</option>
-                <option value="sevenDays">Son 7 Gün</option>
-                <option value="all">Tümü</option>
-              </select>
+              <label className="grid gap-1 text-xs font-semibold opacity-70">Başlangıç
+                <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="rounded-xl border bg-white px-4 py-3 text-sm font-normal text-[#292821]" />
+              </label>
+              <label className="grid gap-1 text-xs font-semibold opacity-70">Bitiş
+                <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="rounded-xl border bg-white px-4 py-3 text-sm font-normal text-[#292821]" />
+              </label>
               <select value={paymentFilter} onChange={(e) => setPaymentFilter(e.target.value as PaymentFilter)} className="rounded-xl border bg-white px-4 py-3">
                 <option value="all">Tüm Ödemeler</option>
                 <option value="cash">Nakit</option>
-                <option value="card">Kredi Kartı</option>
-                <option value="meal_card">Yemek Kartı</option>
-                <option value="mixed">Karma</option>
-                <option value="internal">İkram / İç Tüketim</option>
+                <option value="card">Kapıda Kredi Kartı</option>
+                <option value="online">Online Ödeme / CepPOS</option>
+                <option value="edenred">Edenred</option>
+                <option value="setcard">Setcard</option>
+                <option value="pluxee">Pluxee</option>
               </select>
             </div>
             {summary.discount > 0 && <p className="mt-3 text-sm text-[#6e1f12]">Toplam indirim: <strong>{money(summary.discount)} ₺</strong></p>}
@@ -308,7 +306,16 @@ export default function PosOrdersPage() {
             ) : (
               <div className="divide-y divide-black/8">
                 {filteredOrders.map((order) => (
-                  <button key={order.id} type="button" onClick={() => void openOrder(order)} className="grid w-full gap-3 px-5 py-4 text-left hover:bg-[#f4efe5]/60 md:grid-cols-[1.2fr_1fr_1fr_1fr_auto] md:items-center">
+                  <button
+                    key={order.id}
+                    type="button"
+                    onClick={() => void openOrder(order)}
+                    className={`grid w-full gap-3 border-l-4 px-5 py-4 text-left md:grid-cols-[1.2fr_1fr_1fr_1fr_auto] md:items-center ${
+                      order.invoice_status === "sent"
+                        ? "border-emerald-600 bg-emerald-50/70 hover:bg-emerald-100/70"
+                        : "border-red-500 bg-red-50/70 hover:bg-red-100/70"
+                    }`}
+                  >
                     <div>
                       <p className="font-bold text-[#6e1f12]" style={{ fontFamily: BRAND_FONT }}>{order.receipt_number}</p>
                       <p className="mt-1 text-xs opacity-45">{new Date(order.closed_at ?? order.created_at).toLocaleString("tr-TR")}</p>
@@ -432,18 +439,18 @@ export default function PosOrdersPage() {
 
 function InvoiceStatus({ order }: { order: PosOrder }) {
   if (order.invoice_status === "sent") {
-    return <p className="text-sm font-semibold text-emerald-700">Fatura kesildi{order.invoice_number ? ` · ${order.invoice_number}` : ""}</p>;
+    return <p className="rounded-lg bg-emerald-100 px-2 py-1 text-sm font-semibold text-emerald-800">Fatura gönderildi{order.invoice_number ? ` · ${order.invoice_number}` : ""}</p>;
   }
   if (order.invoice_status === "failed") {
-    return <p className="text-sm font-semibold text-red-700">Fatura başarısız</p>;
+    return <p className="rounded-lg bg-red-100 px-2 py-1 text-sm font-semibold text-red-800">Fatura gönderilemedi</p>;
   }
   if (order.invoice_status === "sending") {
-    return <p className="text-sm font-semibold text-amber-700">Fatura kesiliyor...</p>;
+    return <p className="rounded-lg bg-red-100 px-2 py-1 text-sm font-semibold text-red-800">Fatura gönderiliyor...</p>;
   }
   if (["draft", "ready"].includes(order.invoice_status || "")) {
-    return <p className="text-sm font-semibold text-amber-700">Fatura bekliyor</p>;
+    return <p className="rounded-lg bg-red-100 px-2 py-1 text-sm font-semibold text-red-800">Fatura bekliyor</p>;
   }
-  return <p className="text-sm opacity-45">Fatura yok</p>;
+  return <p className="rounded-lg bg-red-100 px-2 py-1 text-sm font-semibold text-red-800">Fatura gönderilmedi</p>;
 }
 
 function Summary({ label, value }: { label: string; value: string }) {

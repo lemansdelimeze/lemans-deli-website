@@ -194,7 +194,7 @@ const [trendyolAutoSync, setTrendyolAutoSync] = useState(true);  const [newOrder
   const [incomingPaymentTarget, setIncomingPaymentTarget] =
     useState<IncomingOrder | null>(null);
   const [incomingPayment, setIncomingPayment] =
-    useState<Extract<PaymentMethod, "cash" | "card" | "meal_card">>("cash");
+    useState<Extract<PaymentMethod, "cash" | "card" | "online" | "edenred" | "setcard" | "pluxee">>("cash");
   const [payment, setPayment] = useState<PaymentMethod>("cash");
   const [cash, setCash] = useState("");
   const [card, setCard] = useState("");
@@ -998,7 +998,7 @@ await loadIncomingOrdersOnly();
 
   async function completeIncomingOrder(
     order: IncomingOrder,
-    selectedPayment?: Extract<PaymentMethod, "cash" | "card" | "meal_card">
+    selectedPayment?: Extract<PaymentMethod, "cash" | "card" | "online" | "edenred" | "setcard" | "pluxee">
   ) {
     const isPickup =
       order.order_type === "Gel-Al" || order.order_type === "Gel Al";
@@ -1042,8 +1042,8 @@ await loadIncomingOrdersOnly();
       ? {
           payment_method: selectedPayment,
           cash_amount: selectedPayment === "cash" ? total : 0,
-          card_amount: selectedPayment === "card" ? total : 0,
-          meal_card_amount: selectedPayment === "meal_card" ? total : 0,
+          card_amount: ["card", "online"].includes(selectedPayment) ? total : 0,
+          meal_card_amount: ["edenred", "setcard", "pluxee"].includes(selectedPayment) ? total : 0,
         }
       : {};
 
@@ -1504,8 +1504,8 @@ await loadData();
       let targetOrderId = orderId;
       const amounts = {
         cash_amount: payment === "cash" ? total : payment === "mixed" ? Number(cash) || 0 : 0,
-        card_amount: payment === "card" ? total : payment === "mixed" ? Number(card) || 0 : 0,
-        meal_card_amount: payment === "meal_card" ? total : payment === "mixed" ? Number(mealCard) || 0 : 0,
+        card_amount: ["card", "online"].includes(payment) ? total : payment === "mixed" ? Number(card) || 0 : 0,
+        meal_card_amount: ["edenred", "setcard", "pluxee", "meal_card"].includes(payment) ? total : payment === "mixed" ? Number(mealCard) || 0 : 0,
       };
       const values = {
         receipt_number: nextReceipt,
@@ -2411,11 +2411,14 @@ await loadData();
                 {incomingPaymentTarget.receipt_number || `Sipariş #${incomingPaymentTarget.id}`} teslim edildi. Nasıl ödendi?
               </p>
               <p className="mt-3 text-2xl font-bold text-[#6e1f12]">{money(Number(incomingPaymentTarget.total || 0))} ₺</p>
-              <div className="mt-5 grid grid-cols-3 gap-2">
+              <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-3">
                 {([
                   ["cash", "Nakit"],
-                  ["card", "Kart"],
-                  ["meal_card", "Yemek Kartı"],
+                  ["card", "Kapıda Kart"],
+                  ["online", "Online / CepPOS"],
+                  ["edenred", "Edenred"],
+                  ["setcard", "Setcard"],
+                  ["pluxee", "Pluxee"],
                 ] as const).map(([value, label]) => (
                   <button
                     key={value}
