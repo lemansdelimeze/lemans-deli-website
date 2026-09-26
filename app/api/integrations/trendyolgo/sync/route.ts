@@ -341,6 +341,21 @@ function posStatusForPackage(packageStatus: string) {
   return "open";
 }
 
+function posStageForPackage(packageStatus: string) {
+  const status = packageStatus.toUpperCase();
+
+  if (["PICKED", "ACCEPTED"].includes(status)) return "accepted";
+  if (["PREPARING", "PREPARED"].includes(status)) return "preparing";
+  if (["INVOICED", "READY"].includes(status)) return "ready";
+  if (["SHIPPED", "ON_THE_WAY", "ONWAY"].includes(status)) {
+    return "on_the_way";
+  }
+  if (status === "DELIVERED") return "completed";
+  if (["CANCELLED", "UNDELIVERED"].includes(status)) return "cancelled";
+
+  return "new";
+}
+
 async function findMenuItemId(productId: number): Promise<number | null> {
   const { data, error } = await supabaseAdmin
     .from("integration_product_mappings")
@@ -378,6 +393,7 @@ export async function POST() {
 
       const invoice = extractInvoiceData(pkg);
       const posStatus = posStatusForPackage(pkg.packageStatus);
+      const posStage = posStageForPackage(pkg.packageStatus);
 
       const commonValues = {
         customer_name: invoice.customerName,
@@ -416,6 +432,10 @@ export async function POST() {
           updates.status = "closed";
           updates.pos_stage = "completed";
           updates.closed_at = new Date().toISOString();
+        } else if (posStatus === "open") {
+          // Trendyol'da restoran siparişi kabul ettiyse POS'ta tekrar
+          // "Kabul Et" görünmemeli; kanalın aşamasını aynen koru.
+          updates.pos_stage = posStage;
         }
 
         if (posStatus === "cancelled") {
@@ -521,12 +541,7 @@ export async function POST() {
             posStatus === "cancelled"
               ? "Trendyol Go üzerinden iptal edildi"
               : null,
-          pos_stage:
-            posStatus === "closed"
-              ? "completed"
-              : posStatus === "cancelled"
-                ? "cancelled"
-                : "new",
+          pos_stage: posStage,
         })
         .select("id")
         .single();

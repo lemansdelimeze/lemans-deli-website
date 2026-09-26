@@ -191,6 +191,10 @@ const [trendyolAutoSync, setTrendyolAutoSync] = useState(true);  const [newOrder
   const [weightItem, setWeightItem] = useState<MenuItem | null>(null);
   const [weightInput, setWeightInput] = useState("");
   const [paymentOpen, setPaymentOpen] = useState(false);
+  const [incomingPaymentTarget, setIncomingPaymentTarget] =
+    useState<IncomingOrder | null>(null);
+  const [incomingPayment, setIncomingPayment] =
+    useState<Extract<PaymentMethod, "cash" | "card" | "meal_card">>("cash");
   const [payment, setPayment] = useState<PaymentMethod>("cash");
   const [cash, setCash] = useState("");
   const [card, setCard] = useState("");
@@ -980,7 +984,22 @@ await loadIncomingOrdersOnly();
     await loadIncomingOrdersOnly();
   }
   
-   async function completeIncomingOrder(order: IncomingOrder) {
+  function startCompleteIncomingOrder(order: IncomingOrder) {
+    // Web siparişinde ödeme, sipariş oluşturulurken bilinmez. Teslim anında
+    // kasiyer mutlaka tahsilat yöntemini kaydetmelidir.
+    if (order.source === "web" && (!order.payment_method || order.payment_method === "pending")) {
+      setIncomingPayment("cash");
+      setIncomingPaymentTarget(order);
+      return;
+    }
+
+    void completeIncomingOrder(order);
+  }
+
+  async function completeIncomingOrder(
+    order: IncomingOrder,
+    selectedPayment?: Extract<PaymentMethod, "cash" | "card" | "meal_card">
+  ) {
     const isPickup =
       order.order_type === "Gel-Al" || order.order_type === "Gel Al";
     const completionLabel = isPickup ? "teslim alındı" : "teslim edildi";
@@ -1018,12 +1037,23 @@ await loadIncomingOrdersOnly();
       return;
     }
 
+    const total = Number(order.total || 0);
+    const paymentUpdate = selectedPayment
+      ? {
+          payment_method: selectedPayment,
+          cash_amount: selectedPayment === "cash" ? total : 0,
+          card_amount: selectedPayment === "card" ? total : 0,
+          meal_card_amount: selectedPayment === "meal_card" ? total : 0,
+        }
+      : {};
+
     const { error } = await supabase
       .from("pos_orders")
       .update({
         status: "closed",
         pos_stage: "delivered",
         closed_at: new Date().toISOString(),
+        ...paymentUpdate,
       })
       .eq("id", order.id)
       .eq("status", "open");
@@ -2086,6 +2116,7 @@ await loadData();
                             📍 Haritada Aç
                           </a>
                         )}
+                        {stage === "new" && (
                         <button
                           type="button"
                           onClick={() => void acceptIncomingOrder(order)}
@@ -2093,10 +2124,11 @@ await loadData();
                         >
                           ✓ Kabul Et
                         </button>
+                        )}
 
                         <button
                           type="button"
-                          onClick={() => void completeIncomingOrder(order)}
+                          onClick={() => startCompleteIncomingOrder(order)}
                           className="rounded-xl border border-green-700 bg-green-700 px-3 py-2 text-xs font-bold text-white"
                         >
                           ✓ {isPickup ? "Teslim Alındı" : "Teslim Edildi"} · Kapat
@@ -2371,6 +2403,48 @@ await loadData();
           />
         )}
         {paymentOpen && <PaymentModal subtotal={subtotal} discountAmount={discountAmount} discountLabel={discountLabel} total={total} payment={payment} cash={cash} card={card} mealCard={mealCard} internalReason={internalReason} printAfterClose={printAfterClose} saving={saving} onPaymentChange={setPayment} onCashChange={setCash} onCardChange={setCard} onMealCardChange={setMealCard} onInternalReasonChange={setInternalReason} onPrintAfterCloseChange={setPrintAfterClose} onCancel={() => setPaymentOpen(false)} onClose={() => void closeOrder()} />}
+        {incomingPaymentTarget && (
+          <div className="fixed inset-0 z-[130] grid place-items-center bg-black/45 p-4 no-print">
+            <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+              <h2 className="text-xl font-bold text-[#6e1f12]">Tahsilat yöntemi</h2>
+              <p className="mt-2 text-sm opacity-70">
+                {incomingPaymentTarget.receipt_number || `Sipariş #${incomingPaymentTarget.id}`} teslim edildi. Nasıl ödendi?
+              </p>
+              <p className="mt-3 text-2xl font-bold text-[#6e1f12]">{money(Number(incomingPaymentTarget.total || 0))} ₺</p>
+              <div className="mt-5 grid grid-cols-3 gap-2">
+                {([
+                  ["cash", "Nakit"],
+                  ["card", "Kart"],
+                  ["meal_card", "Yemek Kartı"],
+                ] as const).map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setIncomingPayment(value)}
+                    className={`rounded-xl border px-2 py-3 text-sm font-bold ${incomingPayment === value ? "border-[#6e1f12] bg-[#6e1f12] text-white" : "bg-white"}`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <div className="mt-6 flex gap-3">
+                <button type="button" onClick={() => setIncomingPaymentTarget(null)} className="flex-1 rounded-xl border px-4 py-3 font-bold">Vazgeç</button>
+                <button
+                  type="button"
+                  disabled={saving}
+                  onClick={() => {
+                    const target = incomingPaymentTarget;
+                    setIncomingPaymentTarget(null);
+                    void completeIncomingOrder(target, incomingPayment);
+                  }}
+                  className="flex-1 rounded-xl bg-green-700 px-4 py-3 font-bold text-white disabled:opacity-40"
+                >
+                  Teslim Et ve Kapat
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
         <Receipt receiptNumber={printedReceipt} orderLabel={printedOrderLabel} paymentLabel={printedPayment} cart={printedCart} subtotal={printedSubtotal} discount={printedDiscount} discountLabel={printedDiscountLabel} total={printedTotal} />
       </main>
 
