@@ -124,6 +124,14 @@ const orderTexts = {
     empty: "Sepetiniz boş.",
     pickup: "Gel-Al",
     delivery: "Paket Servis",
+    deliveryZone: "Teslimat Bölgesi",
+    chooseZone: "Bölge seçin",
+    minimum: "min.",
+    deliveryFee: "teslimat",
+    freeDelivery: "ücretsiz teslimat",
+    products: "Ürünler",
+    memberDiscount: "Üye indirimi",
+    free: "Ücretsiz",
     name: "Ad Soyad",
     phone: "Telefon",
     email: "E-posta",
@@ -149,6 +157,14 @@ const orderTexts = {
     empty: "Your cart is empty.",
     pickup: "Pickup",
     delivery: "Delivery",
+    deliveryZone: "Delivery Zone",
+    chooseZone: "Select a zone",
+    minimum: "min.",
+    deliveryFee: "delivery",
+    freeDelivery: "free delivery",
+    products: "Items",
+    memberDiscount: "Member discount",
+    free: "Free",
     name: "Full Name",
     phone: "Phone",
     email: "Email",
@@ -174,6 +190,14 @@ const orderTexts = {
     empty: "Корзина пуста.",
     pickup: "Самовывоз",
     delivery: "Доставка",
+    deliveryZone: "Зона доставки",
+    chooseZone: "Выберите район",
+    minimum: "мин.",
+    deliveryFee: "доставка",
+    freeDelivery: "бесплатная доставка",
+    products: "Товары",
+    memberDiscount: "Скидка участника",
+    free: "Бесплатно",
     name: "Имя и фамилия",
     phone: "Телефон",
     email: "Эл. почта",
@@ -1461,7 +1485,7 @@ export default function MenuPage() {
                   {orderType === "delivery" ? (
                     <div>
                       <label className="mb-1 block text-xs font-bold text-[#6e1f12]">
-                        Teslimat Bölgesi
+                        {orderTexts[language].deliveryZone}
                       </label>
                       <select
                         value={deliveryZoneId ?? ""}
@@ -1474,16 +1498,16 @@ export default function MenuPage() {
                         }
                         className="w-full rounded-2xl border border-black/10 bg-white px-4 py-3.5 outline-none focus:border-[#6e1f12]/50"
                       >
-                        <option value="">Bölge seçin</option>
+                        <option value="">{orderTexts[language].chooseZone}</option>
                         {deliveryZones.map((zone) => (
                           <option key={zone.id} value={zone.id}>
-                            {zone.name} · min.{" "}
+                            {zone.name} · {orderTexts[language].minimum}{" "}
                             {Number(zone.minimum_order).toLocaleString("tr-TR")} ₺
                             {Number(zone.delivery_fee) > 0
                               ? ` · +${Number(zone.delivery_fee).toLocaleString(
                                   "tr-TR"
-                                )} ₺ teslimat`
-                              : " · ücretsiz teslimat"}
+                                )} ₺ ${orderTexts[language].deliveryFee}`
+                              : ` · ${orderTexts[language].freeDelivery}`}
                           </option>
                         ))}
                       </select>
@@ -1491,7 +1515,7 @@ export default function MenuPage() {
                   ) : (
                     orderSettings && (
                       <p className="text-xs opacity-50">
-                        {orderTexts[language].pickup} · minimum{" "}
+                        {orderTexts[language].pickup} · {orderTexts[language].minimum}{" "}
                         {orderSettings.pickupMinimum.toLocaleString("tr-TR")} ₺
                       </p>
                     )
@@ -1570,7 +1594,7 @@ export default function MenuPage() {
 
                   <div className="space-y-2 border-t border-[#6e1f12]/10 pt-4">
                     <div className="flex items-center justify-between text-sm">
-                      <span>Ürünler</span>
+                      <span>{orderTexts[language].products}</span>
                       <span>
                         {(quote?.subtotal ?? cartTotal).toLocaleString("tr-TR")} ₺
                       </span>
@@ -1579,7 +1603,7 @@ export default function MenuPage() {
                     {quote && quote.memberDiscountAmount > 0 && (
                       <div className="flex items-center justify-between text-sm text-green-700">
                         <span>
-                          Üye indirimi %{quote.memberDiscountPercent}
+                          {orderTexts[language].memberDiscount} %{quote.memberDiscountPercent}
                         </span>
                         <span>
                           -{quote.memberDiscountAmount.toLocaleString("tr-TR")} ₺
@@ -1590,7 +1614,7 @@ export default function MenuPage() {
                     {orderType === "delivery" && quote && (
                       <div className="flex items-center justify-between text-sm">
                         <span>
-                          Teslimat
+                          {orderTexts[language].delivery}
                           {quote.deliveryZone
                             ? ` · ${quote.deliveryZone.name}`
                             : ""}
@@ -1598,7 +1622,7 @@ export default function MenuPage() {
                         <span>
                           {quote.deliveryFee > 0
                             ? `+${quote.deliveryFee.toLocaleString("tr-TR")} ₺`
-                            : "Ücretsiz"}
+                            : orderTexts[language].free}
                         </span>
                       </div>
                     )}
@@ -1775,6 +1799,7 @@ function CategoryProducts({
               portion={portion}
               calories={item.calories_per_portion}
               dietaryLabel={dietaryLabel}
+              plantBased={item.dietary === "vegan" || item.dietary === "vegetarian"}
               price={item.price}
               open={productOpen}
               onToggle={() =>

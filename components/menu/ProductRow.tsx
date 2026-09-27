@@ -8,6 +8,7 @@ type ProductRowProps = {
   portion?: string | null;
   calories?: number | null;
   dietaryLabel?: string | null;
+  plantBased?: boolean;
   price: number | null;
   open: boolean;
   onToggle: () => void;
@@ -22,6 +23,7 @@ export default function ProductRow({
   portion,
   calories,
   dietaryLabel,
+  plantBased = false,
   price,
   open,
   onToggle,
@@ -40,6 +42,22 @@ export default function ProductRow({
             style={{ fontFamily: BRAND_FONT }}
           >
             {name}
+            {plantBased && (
+              <svg
+                aria-label={dietaryLabel || "Plant-based"}
+                role="img"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="ml-2 inline-block h-[1em] w-[1em] align-[-0.12em] text-[#348348]"
+              >
+                <path d="M19.5 4.5c-7.5 0-13 2.2-13 8.8a4.6 4.6 0 0 0 4.7 4.7c6.6 0 8.8-5.5 8.8-13.5Z" />
+                <path d="M5 20c2.2-5.1 5.8-8.4 10.5-10.8" />
+              </svg>
+            )}
           </h3>
 
           <div className="shrink-0">
