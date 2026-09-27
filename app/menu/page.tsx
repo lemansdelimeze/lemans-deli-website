@@ -404,6 +404,24 @@ function getCategoryName(
   return category.name_tr;
 }
 
+const deliveryZoneNames: Record<string, { en: string; ru: string }> = {
+  "Kaş Merkez": { en: "Kaş Center", ru: "Центр Каша" },
+  "Çukurbağ Yarımadası": {
+    en: "Çukurbağ Peninsula",
+    ru: "Полуостров Чукурбаг",
+  },
+  "Çerçiler": { en: "Çerçiler", ru: "Черчилер" },
+  "Bayındır": { en: "Bayındır", ru: "Байындыр" },
+  "Çukurbağ": { en: "Çukurbağ", ru: "Чукурбаг" },
+  "Ağullu": { en: "Ağullu", ru: "Агуллу" },
+  "Gökseki": { en: "Gökseki", ru: "Гёксеки" },
+};
+
+function getDeliveryZoneName(name: string, language: Language) {
+  if (language === "tr") return name;
+  return deliveryZoneNames[name.trim()]?.[language] || name;
+}
+
 function getProductName(
   item: MenuItem,
   language: Language
@@ -1501,7 +1519,7 @@ export default function MenuPage() {
                         <option value="">{orderTexts[language].chooseZone}</option>
                         {deliveryZones.map((zone) => (
                           <option key={zone.id} value={zone.id}>
-                            {zone.name} · {orderTexts[language].minimum}{" "}
+                            {getDeliveryZoneName(zone.name, language)} · {orderTexts[language].minimum}{" "}
                             {Number(zone.minimum_order).toLocaleString("tr-TR")} ₺
                             {Number(zone.delivery_fee) > 0
                               ? ` · +${Number(zone.delivery_fee).toLocaleString(
@@ -1616,7 +1634,7 @@ export default function MenuPage() {
                         <span>
                           {orderTexts[language].delivery}
                           {quote.deliveryZone
-                            ? ` · ${quote.deliveryZone.name}`
+                            ? ` · ${getDeliveryZoneName(quote.deliveryZone.name, language)}`
                             : ""}
                         </span>
                         <span>
