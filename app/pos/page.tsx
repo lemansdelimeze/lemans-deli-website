@@ -176,6 +176,7 @@ const [trendyolAutoSync, setTrendyolAutoSync] = useState(true);  const [newOrder
   const initialIncomingLoadedRef = useRef(false);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [activeCategoryId, setActiveCategoryId] = useState<number | null>(null);
+  const [productSearch, setProductSearch] = useState("");
   const [orderType, setOrderType] = useState<OrderType>("Masa");
   const [tableId, setTableId] = useState<number | null>(null);
   const [orderId, setOrderId] = useState<number | null>(null);
@@ -227,7 +228,7 @@ const [trendyolAutoSync, setTrendyolAutoSync] = useState(true);  const [newOrder
       onlineSettingsResult,
     ] = await Promise.all([
       supabase.from("categories").select("id,slug,name_tr,sort_order,active").eq("active", true).order("sort_order"),
-      supabase.from("menu_items").select("id,name,name_tr,price,portion,category_id,category,active,sort_order").eq("active", true).not("price", "is", null).order("sort_order"),
+      supabase.from("menu_items").select("id,name,name_tr,price,portion,category_id,category,active,sort_order").not("price", "is", null).order("sort_order"),
       supabase.from("pos_tables").select("id,name,sort_order,active").eq("active", true).order("sort_order"),
       supabase.from("pos_orders").select("id,table_id,total").eq("status", "open"),
       supabase
@@ -1159,12 +1160,18 @@ await loadIncomingOrdersOnly();
   }
 
   const visibleItems = useMemo(() => {
+    const search = productSearch.trim().toLocaleLowerCase("tr-TR").replace(/ı/g, "i").normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    if (search) {
+      return items
+        .filter((item) => nameOf(item).toLocaleLowerCase("tr-TR").replace(/ı/g, "i").normalize("NFD").replace(/[\u0300-\u036f]/g, "").includes(search))
+        .sort((a, b) => Number(b.active) - Number(a.active) || a.sort_order - b.sort_order);
+    }
     const category = categories.find((item) => item.id === activeCategoryId);
     if (!category) return [];
     return items
-      .filter((item) => item.category_id !== null ? item.category_id === category.id : item.category === category.slug)
+      .filter((item) => item.active && (item.category_id !== null ? item.category_id === category.id : item.category === category.slug))
       .sort((a, b) => a.sort_order - b.sort_order);
-  }, [activeCategoryId, categories, items]);
+  }, [activeCategoryId, categories, items, productSearch]);
 
   const subtotal = useMemo(() => cart.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0), [cart]);
   const discountAmount = useMemo(() => {
@@ -1669,14 +1676,15 @@ await loadData();
         }
       `}</style>
 
-      <main className="min-h-screen bg-[#f4efe5] text-[#292821]">
-        <div className="no-print mx-auto max-w-[1500px] px-4 py-5">
+      <main className="min-h-screen min-w-0 overflow-x-hidden bg-[#f4efe5] text-[#292821]">
+        <div className="no-print mx-auto w-full max-w-[1500px] min-w-0 px-3 py-4 sm:px-4 sm:py-5">
           <header className="mb-5 flex flex-col gap-4 border-b border-[#6e1f12]/15 pb-5 md:flex-row md:items-center md:justify-between">
             <div>
               <h1 className="text-3xl font-bold text-[#6e1f12]" style={{ fontFamily: BRAND_FONT }}>Leman&apos;s Deli POS</h1>
               <p className="mt-1 text-sm opacity-50">Masa, gramaj, indirim ve ödeme yönetimi</p>
             </div>
             <div className="flex flex-wrap gap-2">
+              <a href="#pos-products" className="rounded-xl bg-[#6e1f12] px-4 py-2 text-sm font-semibold text-white">🔎 Ürün Bul</a>
               <button type="button" onClick={() => startNonTable("Paket")} className="rounded-xl border bg-white px-4 py-2 text-sm font-semibold">📦 Yeni Paket</button>
               <button type="button" onClick={() => startNonTable("Gel-Al")} className="rounded-xl border bg-white px-4 py-2 text-sm font-semibold">🛍 Yeni Gel-Al</button>
               <a href="/pos/orders" className="rounded-xl border bg-white px-4 py-2 text-sm font-semibold">Kapanan Adisyonlar</a>
@@ -2201,28 +2209,35 @@ await loadData();
             </div>
           </section>
 
-          <div className="grid gap-5 lg:grid-cols-[1fr_410px]">
-            <section>
+          <div className="grid min-w-0 gap-5 lg:grid-cols-[minmax(0,1fr)_410px]">
+            <section id="pos-products" className="min-w-0 scroll-mt-4">
               <div className="mb-4 rounded-2xl bg-white px-4 py-3 text-sm font-semibold text-[#6e1f12]">
                 Aktif işlem: {orderType === "Masa" ? tables.find((table) => table.id === tableId)?.name || "Masa seçilmedi" : orderType}
               </div>
-              <div className="mb-4 flex gap-2 overflow-x-auto pb-2">
+              <label htmlFor="pos-product-search" className="mb-2 block text-sm font-bold text-[#6e1f12]">Ürün ara</label>
+              <div className="mb-4 flex min-w-0 gap-2">
+                <input id="pos-product-search" type="search" value={productSearch} onChange={(event) => setProductSearch(event.target.value)} placeholder="Ürün adı yazın, örn. humus" className="min-w-0 w-full rounded-xl border bg-white px-4 py-3 text-base outline-none focus:border-[#6e1f12]" />
+                {productSearch && <button type="button" onClick={() => setProductSearch("")} className="shrink-0 rounded-xl border bg-white px-3 text-sm font-bold">Temizle</button>}
+              </div>
+              <div className="mb-4 flex min-w-0 flex-wrap gap-2 pb-2">
                 {categories.map((category) => (
-                  <button key={category.id} type="button" onClick={() => setActiveCategoryId(category.id)} className={`shrink-0 rounded-full border px-4 py-2 text-sm font-bold ${activeCategoryId === category.id ? "bg-[#6e1f12] text-white" : "bg-white text-[#6e1f12]"}`}>
+                  <button key={category.id} type="button" onClick={() => { setActiveCategoryId(category.id); setProductSearch(""); }} className={`rounded-full border px-3 py-2 text-sm font-bold sm:px-4 ${!productSearch && activeCategoryId === category.id ? "bg-[#6e1f12] text-white" : "bg-white text-[#6e1f12]"}`}>
                     {category.name_tr}
                   </button>
                 ))}
               </div>
               {loading ? <p>Ürünler yükleniyor...</p> : (
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
+                visibleItems.length === 0 ? <p className="rounded-xl bg-white p-4 text-sm">{productSearch ? "Aramanızla eşleşen ürün yok." : "Bu kategoride ürün yok."}</p> :
+                <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-3 xl:grid-cols-4">
                   {visibleItems.map((item) => {
                     const slug = categorySlug(item, categories);
                     const isPortion = HALF_CATEGORIES.has(slug);
                     const isWeight = WEIGHT_CATEGORIES.has(slug);
                     return (
-                      <article key={item.id} className="flex min-h-40 flex-col rounded-2xl border border-[#6e1f12]/10 bg-white p-4 shadow-sm">
-                        <div className="flex-1">
-                          <p className="font-bold text-[#6e1f12]" style={{ fontFamily: BRAND_FONT }}>{nameOf(item)}</p>
+                      <article key={item.id} className="flex min-w-0 flex-col rounded-2xl border border-[#6e1f12]/10 bg-white p-4 shadow-sm sm:min-h-40">
+                        <div className="min-w-0 flex-1">
+                          <p className="break-words font-bold text-[#6e1f12]" style={{ fontFamily: BRAND_FONT }}>{nameOf(item)}</p>
+                          {!item.active && <p className="mt-1 inline-flex rounded-full bg-amber-100 px-2 py-1 text-xs font-bold text-amber-900">Menüde kapalı · POS&apos;ta eklenebilir</p>}
                           {item.portion && <p className="mt-1 text-sm opacity-55">{item.portion}</p>}
                           <p className="mt-3 text-lg font-bold">
                             {money(item.price ?? 0)} ₺
