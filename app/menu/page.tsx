@@ -191,6 +191,30 @@ const orderTexts = {
   },
 } as const;
 
+function availabilityMessage(language: Language, reason: string | null) {
+  if (language === "tr") return reason || "Şu anda online sipariş alamıyoruz.";
+
+  const hours = reason?.match(/^Online sipariş saatlerimiz (\d{2}:\d{2})–(\d{2}:\d{2})\.$/);
+  if (hours) {
+    return language === "ru"
+      ? `Онлайн-заказы принимаются с ${hours[1]} до ${hours[2]}.`
+      : `Online ordering hours: ${hours[1]}–${hours[2]}.`;
+  }
+  if (reason === "Şu anda Gel-Al ve Paket Servis siparişi kapalı.") {
+    return language === "ru"
+      ? "Самовывоз и доставка сейчас недоступны."
+      : "Pickup and delivery are currently unavailable.";
+  }
+  if (reason === "Sipariş durumu şu anda kontrol edilemiyor.") {
+    return language === "ru"
+      ? "Сейчас не удаётся проверить доступность онлайн-заказов."
+      : "We can't check online ordering availability right now.";
+  }
+  return language === "ru"
+    ? "Сейчас мы не принимаем онлайн-заказы."
+    : "Online ordering is currently unavailable.";
+}
+
 const BRAND_FONT =
   '"American Typewriter", "Courier New", Courier, monospace';
 
@@ -826,14 +850,7 @@ export default function MenuPage() {
     weightGrams: number | null = null
   ) {
     if (!acceptingOrders) {
-      setOrderError(
-        orderAvailabilityReason ||
-          (language === "tr"
-            ? "Şu anda online sipariş alamıyoruz."
-            : language === "ru"
-              ? "Сейчас онлайн-заказы недоступны."
-              : "Online ordering is currently unavailable.")
-      );
+      setOrderError(availabilityMessage(language, orderAvailabilityReason));
       return;
     }
 
@@ -873,10 +890,7 @@ export default function MenuPage() {
     await loadOrderSettings();
 
     if (!acceptingOrders) {
-      setOrderError(
-        orderAvailabilityReason ||
-          "Şu anda online sipariş alamıyoruz."
-      );
+      setOrderError(availabilityMessage(language, orderAvailabilityReason));
       return;
     }
 
@@ -1117,12 +1131,7 @@ export default function MenuPage() {
                   : language === "ru"
                     ? "Сейчас можно сделать заказ"
                     : "You can order now"
-                : orderAvailabilityReason ||
-                  (language === "tr"
-                    ? "Şu anda sipariş alamıyoruz"
-                    : language === "ru"
-                      ? "Сейчас мы не принимаем заказы"
-                      : "We're not taking orders right now")}
+                : availabilityMessage(language, orderAvailabilityReason)}
             </p>
 
             {orderSettings && acceptingOrders && (
@@ -1224,7 +1233,7 @@ export default function MenuPage() {
                       setOpenProductId={setOpenProductId}
                       onAddToCart={addToCart}
                       orderingAvailable={acceptingOrders}
-                      orderingReason={orderAvailabilityReason}
+                      orderingReason={availabilityMessage(language, orderAvailabilityReason)}
                     />
                   </section>
                 );
@@ -1309,7 +1318,7 @@ export default function MenuPage() {
                       setOpenProductId={setOpenProductId}
                       onAddToCart={addToCart}
                       orderingAvailable={acceptingOrders}
-                      orderingReason={orderAvailabilityReason}
+                      orderingReason={availabilityMessage(language, orderAvailabilityReason)}
                     />
                   </section>
                 );
