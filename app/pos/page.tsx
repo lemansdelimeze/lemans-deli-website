@@ -196,6 +196,7 @@ const [trendyolAutoSync, setTrendyolAutoSync] = useState(true);  const [newOrder
     useState<IncomingOrder | null>(null);
   const [incomingPayment, setIncomingPayment] =
     useState<Extract<PaymentMethod, "cash" | "card" | "online" | "edenred" | "setcard" | "pluxee">>("cash");
+  const [deliveryPaymentChosen, setDeliveryPaymentChosen] = useState(false);
   const [payment, setPayment] = useState<PaymentMethod>("cash");
   const [cash, setCash] = useState("");
   const [card, setCard] = useState("");
@@ -988,8 +989,12 @@ await loadIncomingOrdersOnly();
   function startCompleteIncomingOrder(order: IncomingOrder) {
     // Web siparişinde ödeme, sipariş oluşturulurken bilinmez. Teslim anında
     // kasiyer mutlaka tahsilat yöntemini kaydetmelidir.
-    if (order.source === "web" && (!order.payment_method || order.payment_method === "pending")) {
+    if (
+      (order.source === "web" && (!order.payment_method || order.payment_method === "pending")) ||
+      (order.source === "trendyol" && order.payment_method === "Kapıda Ödeme")
+    ) {
       setIncomingPayment("cash");
+      setDeliveryPaymentChosen(false);
       setIncomingPaymentTarget(order);
       return;
     }
@@ -1021,7 +1026,7 @@ await loadIncomingOrdersOnly();
           "Content-Type": "application/json",
           Authorization: `Bearer ${session?.access_token || ""}`,
         },
-        body: JSON.stringify({ orderId: order.id, stage: "delivered" }),
+        body: JSON.stringify({ orderId: order.id, stage: "delivered", paymentMethod: selectedPayment }),
       });
       const result = await response.json();
 
@@ -2423,7 +2428,7 @@ await loadData();
             <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
               <h2 className="text-xl font-bold text-[#6e1f12]">Tahsilat yöntemi</h2>
               <p className="mt-2 text-sm opacity-70">
-                {incomingPaymentTarget.receipt_number || `Sipariş #${incomingPaymentTarget.id}`} teslim edildi. Nasıl ödendi?
+                {incomingPaymentTarget.receipt_number || `Sipariş #${incomingPaymentTarget.id}`} için nasıl tahsilat yapıldı?
               </p>
               <p className="mt-3 text-2xl font-bold text-[#6e1f12]">{money(Number(incomingPaymentTarget.total || 0))} ₺</p>
               <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-3">
@@ -2434,12 +2439,12 @@ await loadData();
                   ["edenred", "Edenred"],
                   ["setcard", "Setcard"],
                   ["pluxee", "Pluxee"],
-                ] as const).map(([value, label]) => (
+                ] as const).filter(([value]) => incomingPaymentTarget.source !== "trendyol" || value === "cash" || value === "card").map(([value, label]) => (
                   <button
                     key={value}
                     type="button"
-                    onClick={() => setIncomingPayment(value)}
-                    className={`rounded-xl border px-2 py-3 text-sm font-bold ${incomingPayment === value ? "border-[#6e1f12] bg-[#6e1f12] text-white" : "bg-white"}`}
+                    onClick={() => { setIncomingPayment(value); setDeliveryPaymentChosen(true); }}
+                    className={`rounded-xl border px-2 py-3 text-sm font-bold ${deliveryPaymentChosen && incomingPayment === value ? "border-[#6e1f12] bg-[#6e1f12] text-white" : "bg-white"}`}
                   >
                     {label}
                   </button>
@@ -2449,7 +2454,7 @@ await loadData();
                 <button type="button" onClick={() => setIncomingPaymentTarget(null)} className="flex-1 rounded-xl border px-4 py-3 font-bold">Vazgeç</button>
                 <button
                   type="button"
-                  disabled={saving}
+                  disabled={saving || !deliveryPaymentChosen}
                   onClick={() => {
                     const target = incomingPaymentTarget;
                     setIncomingPaymentTarget(null);

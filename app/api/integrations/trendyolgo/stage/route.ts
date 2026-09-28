@@ -55,6 +55,7 @@ export async function POST(request: NextRequest) {
       orderId?: number;
       stage?: Stage;
       preparationTime?: number;
+      paymentMethod?: "cash" | "card";
     };
 
     if (
@@ -71,7 +72,7 @@ export async function POST(request: NextRequest) {
 
     const { data: order, error: orderError } = await supabase
       .from("pos_orders")
-      .select("id,external_order_id,source,status,external_payload")
+      .select("id,external_order_id,source,status,payment_method,total,external_payload")
       .eq("id", body.orderId)
       .eq("source", "trendyol")
       .eq("status", "open")
@@ -101,6 +102,17 @@ export async function POST(request: NextRequest) {
           error:
             "Bu sipariÅŸ kendi kurye teslimatÄ± deÄŸil; Trendyol Go durumunu kurye yÃ¶netir.",
         },
+        { status: 400 }
+      );
+    }
+
+    if (
+      body.stage === "delivered" &&
+      order.payment_method === "Kapıda Ödeme" &&
+      !["cash", "card"].includes(body.paymentMethod || "")
+    ) {
+      return NextResponse.json(
+        { ok: false, error: "Kapıda tahsilat için nakit veya kart seçin." },
         { status: 400 }
       );
     }
@@ -146,6 +158,14 @@ export async function POST(request: NextRequest) {
                 pos_stage: "delivered",
                 external_status: "Delivered",
                 closed_at: new Date().toISOString(),
+                ...(order.payment_method === "Kapıda Ödeme"
+                  ? {
+                      payment_method: body.paymentMethod,
+                      cash_amount: body.paymentMethod === "cash" ? Number(order.total) : 0,
+                      card_amount: body.paymentMethod === "card" ? Number(order.total) : 0,
+                      meal_card_amount: 0,
+                    }
+                  : {}),
               };
 
     const { error: updateError } = await supabaseAdmin

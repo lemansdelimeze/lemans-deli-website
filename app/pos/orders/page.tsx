@@ -91,6 +91,7 @@ export default function PosOrdersPage() {
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
   const [retryingInvoice, setRetryingInvoice] = useState(false);
+  const [savingDeliveryPayment, setSavingDeliveryPayment] = useState(false);
 
   const loadOrders = useCallback(async () => {
     setLoading(true);
@@ -242,6 +243,32 @@ export default function PosOrdersPage() {
     }
   }
 
+  async function setDeliveryPayment(order: PosOrder, method: "cash" | "card") {
+    setSavingDeliveryPayment(true);
+    const { data, error } = await supabase
+      .from("pos_orders")
+      .update({
+        payment_method: method,
+        cash_amount: method === "cash" ? order.total : 0,
+        card_amount: method === "card" ? order.total : 0,
+        meal_card_amount: 0,
+      })
+      .eq("id", order.id)
+      .eq("source", "trendyol")
+      .eq("status", "closed")
+      .eq("payment_method", "Kapıda Ödeme")
+      .select("id")
+      .single();
+
+    setSavingDeliveryPayment(false);
+    if (error || !data) {
+      alert(error?.message || "Tahsilat türü kaydedilemedi.");
+      return;
+    }
+    setSelectedOrder({ ...order, payment_method: method });
+    await loadOrders();
+  }
+
   return (
     <>
       <style jsx global>{`
@@ -377,6 +404,17 @@ export default function PosOrdersPage() {
                     <div className="flex justify-between text-sm"><span>Ödeme</span><span>{PAYMENT_LABELS[selectedOrder.payment_method] ?? selectedOrder.payment_method}</span></div>
                   </div>
 
+                  {selectedOrder.source === "trendyol" && selectedOrder.payment_method === "Kapıda Ödeme" && (
+                    <div className="mt-4 rounded-xl border border-amber-300 bg-amber-50 p-4">
+                      <p className="font-semibold">Kapıda tahsilat nasıl yapıldı?</p>
+                      <p className="mt-1 text-sm">Bu sipariş için e-Fatura yerine yazar kasa fişi düzenlenir. Tahsilat türünü kaydedin.</p>
+                      <div className="mt-3 flex gap-2">
+                        <button type="button" disabled={savingDeliveryPayment} onClick={() => void setDeliveryPayment(selectedOrder, "cash")} className="rounded-lg border bg-white px-4 py-2 disabled:opacity-50">Nakit</button>
+                        <button type="button" disabled={savingDeliveryPayment} onClick={() => void setDeliveryPayment(selectedOrder, "card")} className="rounded-lg border bg-white px-4 py-2 disabled:opacity-50">Kredi Kartı</button>
+                      </div>
+                    </div>
+                  )}
+
                   {selectedOrder.order_note && <div className="mt-4 rounded-xl border p-4"><p className="text-xs font-bold uppercase opacity-50">Not</p><p className="mt-2 whitespace-pre-wrap">{selectedOrder.order_note}</p></div>}
 
                   <div className="mt-4 rounded-xl border border-[#6e1f12]/15 bg-[#f4efe5] p-4">
@@ -441,7 +479,8 @@ export default function PosOrdersPage() {
 }
 
 function hasRegisterReceipt(order: PosOrder) {
-  return ["pos", "web"].includes(order.source || "") && ["cash", "card"].includes(order.payment_method);
+  return ["cash", "card"].includes(order.payment_method) ||
+    (["trendyol", "yemeksepeti"].includes(order.source || "") && order.payment_method === "Kapıda Ödeme");
 }
 
 function hasPendingInvoice(order: PosOrder) {
@@ -456,7 +495,7 @@ function InvoiceStatus({ order }: { order: PosOrder }) {
     return <p className="rounded-lg bg-red-100 px-2 py-1 text-sm font-semibold text-red-800">Fatura gönderilemedi</p>;
   }
   if (hasRegisterReceipt(order) && !hasPendingInvoice(order)) {
-    return <p className="rounded-lg bg-slate-100 px-2 py-1 text-sm font-semibold text-slate-700">Yazarkasa fişi</p>;
+    return <p className="rounded-lg bg-slate-100 px-2 py-1 text-sm font-semibold text-slate-700">{order.payment_method === "Kapıda Ödeme" ? "Yazarkasa fişi · Tahsilatı seçin" : "Yazarkasa fişi"}</p>;
   }
   if (order.invoice_status === "sending") {
     return <p className="rounded-lg bg-red-100 px-2 py-1 text-sm font-semibold text-red-800">Fatura gönderiliyor...</p>;

@@ -189,19 +189,21 @@ function trendyolPaymentMethod(pkg: TgPackage) {
   const paymentType =
     firstString(pkg, [["payment", "paymentType"]])?.toUpperCase() ?? "";
 
+  const onDelivery = readPath(pkg, ["payment", "onDelivery"]);
+  if (onDelivery !== null && onDelivery !== undefined && onDelivery !== false) {
+    return "Kapıda Ödeme";
+  }
+
+  if (paymentType.includes("ON_DELIVERY") || paymentType.includes("CASH")) {
+    return "Kapıda Ödeme";
+  }
+
   if (
     paymentType === "PAY_WITH_CARD" ||
     paymentType.includes("CARD") ||
     paymentType.includes("ONLINE")
   ) {
     return "Online Kart Ödemesi";
-  }
-
-  if (
-    paymentType.includes("CASH") ||
-    paymentType.includes("ON_DELIVERY")
-  ) {
-    return "Kapıda Ödeme";
   }
 
   return paymentType || "Ödeme bilgisi bekleniyor";
@@ -424,7 +426,7 @@ export async function POST() {
 
       const { data: existing, error: existingError } = await supabaseAdmin
         .from("pos_orders")
-        .select("id,status")
+        .select("id,status,payment_method")
         .eq("source", "trendyol")
         .eq("external_order_id", externalOrderId)
         .maybeSingle();
@@ -435,6 +437,14 @@ export async function POST() {
         const updates: Record<string, unknown> = {
           ...commonValues,
         };
+
+        // POS'ta seçilmiş kapıda tahsilat yöntemini sonraki kanal senkronu silmesin.
+        if (
+          commonValues.payment_method === "Kapıda Ödeme" &&
+          ["cash", "card"].includes(existing.payment_method || "")
+        ) {
+          delete updates.payment_method;
+        }
 
         if (posStatus === "closed") {
           updates.status = "closed";

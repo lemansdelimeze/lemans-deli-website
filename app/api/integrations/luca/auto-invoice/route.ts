@@ -37,8 +37,14 @@ function isOnlinePlatformPayment(order: {
 
   const payloadPayment =
     order.external_payload && typeof order.external_payload === "object"
-      ? (order.external_payload as { payment?: { type?: unknown; paymentType?: unknown } }).payment
+      ? (order.external_payload as { payment?: { type?: unknown; paymentType?: unknown; onDelivery?: unknown } }).payment
       : null;
+  if (payloadPayment?.onDelivery !== null && payloadPayment?.onDelivery !== undefined && payloadPayment?.onDelivery !== false) {
+    return false;
+  }
+  if (["cash", "card", "Kapıda Ödeme"].includes(order.payment_method || "")) {
+    return false;
+  }
   const value = [
     order.payment_method,
     payloadPayment?.type,
