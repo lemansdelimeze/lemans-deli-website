@@ -1221,11 +1221,13 @@ await loadIncomingOrdersOnly();
     });
   }
 
-  async function selectTable(table: PosTable, accountId?: number) {
-    setOrderType("Masa"); setTableId(table.id); setCart([]); setOrderId(null);
-    setAccountLabel("");
-    setSplitOpen(false); setSavedCartSignature(""); setSplitQuantities({}); setMergeSourceOrderId(null);
-    setCustomerName(""); setOrderNote(""); setDiscountType("none"); setDiscountValue("");
+  async function selectTable(table: PosTable, accountId?: number, keepAtOrder = false) {
+    setOrderType("Masa"); setTableId(table.id);
+    if (!keepAtOrder) {
+      setCart([]); setOrderId(null); setAccountLabel(""); setSavedCartSignature("");
+      setCustomerName(""); setOrderNote(""); setDiscountType("none"); setDiscountValue("");
+    }
+    setSplitOpen(false); setSplitQuantities({}); setMergeSourceOrderId(null);
     let query = supabase
       .from("pos_orders")
       .select("id,customer_name,order_note,discount_type,discount_value,account_label")
@@ -1234,7 +1236,12 @@ await loadIncomingOrdersOnly();
       : query.eq("table_id", table.id);
     const { data: order, error } = await query.maybeSingle();
     if (error) { alert(error.message); return; }
-    if (!order) { scrollToMobileSection("pos-products"); return; }
+    if (!order) {
+      setCart([]); setOrderId(null); setAccountLabel(""); setSavedCartSignature("");
+      setCustomerName(""); setOrderNote(""); setDiscountType("none"); setDiscountValue("");
+      if (!keepAtOrder) scrollToMobileSection("pos-products");
+      return;
+    }
     const { data, error: itemError } = await supabase
       .from("pos_order_items")
       .select("id,menu_item_id,product_name,quantity,portion_type,portion_label,weight_grams,unit_price,is_complimentary,original_unit_price")
@@ -1267,7 +1274,7 @@ await loadIncomingOrdersOnly();
     setDiscountValue(order.discount_value ? String(order.discount_value) : "");
     setCart(restored);
     setSavedCartSignature(cartSignature(restored));
-    scrollToMobileSection("pos-products");
+    if (!keepAtOrder) scrollToMobileSection("pos-products");
   }
 
   function startNonTable(type: "Paket" | "Gel-Al") {
@@ -2397,9 +2404,9 @@ await loadData();
               <h2 className="text-2xl font-bold text-[#6e1f12]" style={{ fontFamily: BRAND_FONT }}>Adisyon</h2>
               {orderType === "Masa" && tableId && openOrders.some((entry) => entry.account_table_id === tableId) && (
                 <div className="mt-3 flex flex-wrap gap-2">
-                  <button type="button" onClick={() => { const table = tables.find((entry) => entry.id === tableId); if (table) void selectTable(table); }} className={`rounded-lg border px-3 py-2 text-xs font-bold ${!accountLabel ? "bg-[#6e1f12] text-white" : ""}`}>Ana hesap</button>
+                  <button type="button" onClick={() => { const table = tables.find((entry) => entry.id === tableId); if (table) void selectTable(table, undefined, true); }} className={`rounded-lg border px-3 py-2 text-xs font-bold ${!accountLabel ? "bg-[#6e1f12] text-white" : ""}`}>Ana hesap</button>
                   {openOrders.filter((entry) => entry.account_table_id === tableId).map((entry) => (
-                    <button key={entry.id} type="button" onClick={() => { const table = tables.find((item) => item.id === tableId); if (table) void selectTable(table, entry.id); }} className={`rounded-lg border px-3 py-2 text-xs font-bold ${orderId === entry.id ? "bg-[#6e1f12] text-white" : ""}`}>{entry.account_label || `Hesap ${entry.id}`} · {money(entry.total)} ₺</button>
+                    <button key={entry.id} type="button" onClick={() => { const table = tables.find((item) => item.id === tableId); if (table) void selectTable(table, entry.id, true); }} className={`rounded-lg border px-3 py-2 text-xs font-bold ${orderId === entry.id ? "bg-[#6e1f12] text-white" : ""}`}>{entry.account_label || `Hesap ${entry.id}`} · {money(entry.total)} ₺</button>
                   ))}
                 </div>
               )}
