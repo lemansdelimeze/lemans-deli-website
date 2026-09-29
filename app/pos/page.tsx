@@ -4,6 +4,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "re
 import { supabase } from "../../lib/supabase";
 import PaymentModal from "../../components/pos/PaymentModal";
 import Receipt from "../../components/pos/Receipt";
+import { queuePosPrint } from "../../components/pos/printClient";
 import WeightModal from "../../components/pos/WeightModal";
 import type {
   CartItem,
@@ -203,6 +204,7 @@ const [trendyolAutoSync, setTrendyolAutoSync] = useState(true);  const [newOrder
   const [mealCard, setMealCard] = useState("");
   const [internalReason, setInternalReason] = useState("Personel");
   const [printAfterClose, setPrintAfterClose] = useState(true);
+  const [queuingPrint, setQueuingPrint] = useState(false);
   const [discountType, setDiscountType] = useState<DiscountType>("none");
   const [discountValue, setDiscountValue] = useState("");
 
@@ -1496,11 +1498,25 @@ await loadData();
     setPrintedTotal(total); setPrintedOrderLabel(label);
   }
 
-  function printCurrentOrder() {
+  async function printCurrentOrder() {
     if (!cart.length) { alert("Sipariş boş."); return; }
     const label = orderType === "Masa" ? tables.find((table) => table.id === tableId)?.name || "Masa" : orderType;
-    preparePrint(label, "ÖDENMEDİ / AÇIK ADİSYON", orderId ? `AÇIK-${orderId}` : `AÇIK-${receiptNo()}`);
-    window.setTimeout(() => window.print(), 150);
+    setQueuingPrint(true);
+    try {
+      await queuePosPrint({
+        receiptNumber: orderId ? `AÇIK-${orderId}` : `AÇIK-${receiptNo()}`,
+        orderLabel: label,
+        paymentLabel: "ÖDENMEDİ / AÇIK ADİSYON",
+        subtotal, discount: discountAmount, discountLabel, total,
+        items: cart.map((item) => ({
+          name: `${item.portionType === "half" ? "½ " : ""}${nameOf(item)}${item.displayPortion ? ` (${item.displayPortion})` : ""}`,
+          quantity: item.quantity, lineTotal: item.unitPrice * item.quantity,
+        })),
+      });
+      alert("Adisyon ana bilgisayardaki yazdırma kuyruğuna eklendi.");
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Adisyon yazdırılamadı.");
+    } finally { setQueuingPrint(false); }
   }
 
   async function closeOrder() {
@@ -1564,7 +1580,20 @@ await loadData();
 
       preparePrint(label, paymentLabel, nextReceipt);
       setPaymentOpen(false);
-      if (printAfterClose) window.setTimeout(() => window.print(), 200);
+      if (printAfterClose) {
+        try {
+          await queuePosPrint({
+            receiptNumber: nextReceipt, orderLabel: label, paymentLabel,
+            subtotal, discount: discountAmount, discountLabel, total,
+            items: cart.map((item) => ({
+              name: `${item.portionType === "half" ? "½ " : ""}${nameOf(item)}${item.displayPortion ? ` (${item.displayPortion})` : ""}`,
+              quantity: item.quantity, lineTotal: item.unitPrice * item.quantity,
+            })),
+          });
+        } catch (error) {
+          alert(`Adisyon kapandı ancak ana bilgisayara yazdırılamadı: ${error instanceof Error ? error.message : "Kuyruk hatası"}`);
+        }
+      }
       setCart([]); setOrderId(null); setTableId(null); setCustomerName(""); setOrderNote("");
       setDiscountType("none"); setDiscountValue("");
       await loadData();
@@ -2306,7 +2335,7 @@ await loadData();
               </div>
 
               <div className="mt-5 grid grid-cols-2 gap-3">
-                <button type="button" onClick={printCurrentOrder} disabled={!cart.length} className="rounded-xl border px-4 py-4 font-bold disabled:opacity-40">Adisyon Yazdır</button>
+                <button type="button" onClick={() => void printCurrentOrder()} disabled={!cart.length || queuingPrint} className="rounded-xl border px-4 py-4 font-bold disabled:opacity-40">{queuingPrint ? "Gönderiliyor..." : "Adisyon Yazdır"}</button>
                 <button type="button" onClick={() => void saveOpen()} disabled={saving || !cart.length} className="rounded-xl border border-[#6e1f12]/20 px-4 py-4 font-bold text-[#6e1f12] disabled:opacity-40">{orderType === "Masa" ? "Masaya Kaydet" : "Beklemeye Al"}</button>
               </div>
               {canCancelOrder && orderId && (

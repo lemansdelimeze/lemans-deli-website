@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "../../../lib/supabase";
+import { queuePosPrint } from "../../../components/pos/printClient";
 
 type PaymentFilter =
   | "all"
@@ -91,6 +92,7 @@ export default function PosOrdersPage() {
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
   const [retryingInvoice, setRetryingInvoice] = useState(false);
+  const [queuingReprint, setQueuingReprint] = useState(false);
   const [savingDeliveryPayment, setSavingDeliveryPayment] = useState(false);
 
   const loadOrders = useCallback(async () => {
@@ -205,9 +207,27 @@ export default function PosOrdersPage() {
     setDetailLoading(false);
   }
 
-  function printSelected() {
+  async function printSelected() {
     if (!selectedOrder || selectedItems.length === 0) return;
-    window.setTimeout(() => window.print(), 100);
+    setQueuingReprint(true);
+    try {
+      await queuePosPrint({
+        receiptNumber: selectedOrder.receipt_number,
+        orderLabel: tableName(selectedOrder),
+        paymentLabel: PAYMENT_LABELS[selectedOrder.payment_method] ?? selectedOrder.payment_method,
+        subtotal: Number(selectedOrder.subtotal),
+        discount: Number(selectedOrder.discount_amount || 0),
+        discountLabel: "",
+        total: Number(selectedOrder.total),
+        items: selectedItems.map((item) => ({
+          name: `${item.portion_type === "half" ? "½ " : ""}${item.product_name}${item.portion_label ? ` (${item.portion_label})` : ""}`,
+          quantity: Number(item.quantity), lineTotal: Number(item.line_total),
+        })),
+      });
+      alert("Adisyon ana bilgisayardaki yazdırma kuyruğuna eklendi.");
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Adisyon yazdırılamadı.");
+    } finally { setQueuingReprint(false); }
   }
 
   async function retryInvoice(order: PosOrder) {
@@ -432,7 +452,7 @@ export default function PosOrdersPage() {
 
                   <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
                     <button type="button" onClick={() => setSelectedOrder(null)} className="rounded-xl border px-4 py-3">Kapat</button>
-                    <button type="button" onClick={printSelected} disabled={selectedItems.length === 0} className="rounded-xl bg-[#6e1f12] px-4 py-3 font-bold text-white disabled:opacity-40">Tekrar Yazdır</button>
+                    <button type="button" onClick={() => void printSelected()} disabled={selectedItems.length === 0 || queuingReprint} className="rounded-xl bg-[#6e1f12] px-4 py-3 font-bold text-white disabled:opacity-40">{queuingReprint ? "Gönderiliyor..." : "Tekrar Yazdır"}</button>
                     <a href={`/pos/invoices?order=${selectedOrder.id}`} className="rounded-xl bg-green-700 px-4 py-3 text-center font-bold text-white">Fatura Aç</a>
                   </div>
                 </>
