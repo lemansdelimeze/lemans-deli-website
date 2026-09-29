@@ -27,7 +27,18 @@ export async function staffForPrint(request: NextRequest) {
   });
   const { data, error } = await requestSupabase.auth.getUser(authorization.slice(7));
   if (error || !data.user) {
-    console.error("POS print auth rejected:", error?.code || "no_user", error?.status || "");
+    let issuerHost = "unreadable";
+    try {
+      const payload = JSON.parse(Buffer.from(authorization.slice(7).split(".")[1], "base64url").toString("utf8"));
+      issuerHost = typeof payload.iss === "string" ? new URL(payload.iss).host : "missing";
+    } catch { /* Never log the token or its payload. */ }
+    const detail = String(error?.message || "no_user")
+      .replace(/[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}/g, "[redacted]")
+      .slice(0, 180);
+    console.error("POS print auth rejected:", {
+      code: error?.code || "no_code", status: error?.status || null,
+      detail, issuerHost, configuredHost: new URL(url).host,
+    });
     return { userId: null, reason: "token_invalid" } as const;
   }
   const { data: staff, error: staffError } = await supabaseAdmin.from("staff_profiles")
