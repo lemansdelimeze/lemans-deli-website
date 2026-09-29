@@ -76,7 +76,7 @@ function Wrap([string]$value, [int]$width = 27) {
 }
 
 function Money($value) {
-    return ([decimal]$value).ToString("N2", [Globalization.CultureInfo]::GetCultureInfo("tr-TR")) + " TL"
+    return ([decimal]$value).ToString("N2", [Globalization.CultureInfo]::GetCultureInfo("tr-TR")) + " ₺"
 }
 
 function Print-Job($job) {
@@ -90,12 +90,12 @@ function Print-Job($job) {
     $numberLines = @(Wrap ("Adisyon No: " + $data.receiptNumber) 36)
     $paymentLines = if ($data.paymentLabel) { @(Wrap ("Durum: " + $data.paymentLabel) 36) } else { @() }
     $rowHeight = 0.0
-    foreach ($row in $rows) { $rowHeight += 5.0 + (4.2 * ($row.Lines.Count - 1)) }
-    $paperMm = [Math]::Max(100, 104 + ($numberLines.Count + $labelLines.Count - 2 + $paymentLines.Count) * 4.3 + $rowHeight + $(if ([decimal]$data.discount -gt 0) { 5 } else { 0 }))
+    foreach ($row in $rows) { $rowHeight += 4.0 + (3.5 * ($row.Lines.Count - 1)) }
+    $paperMm = [Math]::Max(80, 90 + ($numberLines.Count + $labelLines.Count - 2 + $paymentLines.Count) * 3.7 + $rowHeight + $(if ([decimal]$data.discount -gt 0) { 4 } else { 0 }))
     $document = New-Object System.Drawing.Printing.PrintDocument
-    $regular = New-Object System.Drawing.Font -ArgumentList "Arial", 8
-    $bold = New-Object System.Drawing.Font -ArgumentList "Arial", 8, ([System.Drawing.FontStyle]::Bold)
-    $large = New-Object System.Drawing.Font -ArgumentList "Arial", 12, ([System.Drawing.FontStyle]::Bold)
+    $regular = New-Object System.Drawing.Font -ArgumentList "Consolas", 6.5
+    $bold = New-Object System.Drawing.Font -ArgumentList "Consolas", 7.5, ([System.Drawing.FontStyle]::Bold)
+    $large = New-Object System.Drawing.Font -ArgumentList "Consolas", 10.5, ([System.Drawing.FontStyle]::Bold)
     $center = New-Object System.Drawing.StringFormat
     $center.Alignment = [System.Drawing.StringAlignment]::Center
     $right = New-Object System.Drawing.StringFormat
@@ -126,37 +126,37 @@ function Print-Job($job) {
             $g.PageUnit = [System.Drawing.GraphicsUnit]::Millimeter
             $black = [System.Drawing.Brushes]::Black
             $y = 2.0
-            if ($script:receiptLogo) { $g.DrawImage($script:receiptLogo, 8.0, $y, 42.0, 28.0); $y += 29.0 }
-            else { $g.DrawString("Leman's Deli", $script:receiptLarge, $black, [System.Drawing.RectangleF]::new(3, $y, 52, 8), $script:receiptCenter); $y += 9.0 }
+            if ($script:receiptLogo) { $g.DrawImage($script:receiptLogo, 3.0, $y, 42.0, 28.0); $y += 29.0 }
+            else { $g.DrawString("Leman's Deli", $script:receiptLarge, $black, [System.Drawing.RectangleF]::new(2, $y, 44, 8), $script:receiptCenter); $y += 9.0 }
             $pen = New-Object System.Drawing.Pen -ArgumentList ([System.Drawing.Color]::Black), 0.18
             try {
                 $pen.DashStyle = [System.Drawing.Drawing2D.DashStyle]::Dash
-                $g.DrawLine($pen, 3.0, $y, 55.0, $y); $y += 2.0
-                foreach ($line in $script:receiptNumberLines) { $g.DrawString($line, $script:receiptRegular, $black, 3.0, $y); $y += 4.3 }
-                $g.DrawString("Tarih: " + (Get-Date -Format "dd.MM.yyyy"), $script:receiptRegular, $black, 3.0, $y); $y += 4.3
-                $g.DrawString("Saat: " + (Get-Date -Format "HH:mm"), $script:receiptRegular, $black, 3.0, $y); $y += 4.3
-                foreach ($line in $script:receiptLabelLines) { $g.DrawString($line, $script:receiptRegular, $black, 3.0, $y); $y += 4.3 }
-                $y += 1.0; $g.DrawLine($pen, 3.0, $y, 55.0, $y); $y += 2.0
+                $g.DrawLine($pen, 2.0, $y, 46.0, $y); $y += 2.0
+                foreach ($line in $script:receiptNumberLines) { $g.DrawString($line, $script:receiptRegular, $black, 2.0, $y); $y += 3.7 }
+                $g.DrawString("Tarih: " + (Get-Date -Format "dd.MM.yyyy"), $script:receiptRegular, $black, 2.0, $y); $y += 3.7
+                $g.DrawString("Saat: " + (Get-Date -Format "HH:mm"), $script:receiptRegular, $black, 2.0, $y); $y += 3.7
+                foreach ($line in $script:receiptLabelLines) { $g.DrawString($line, $script:receiptRegular, $black, 2.0, $y); $y += 3.7 }
+                $y += 1.0; $g.DrawLine($pen, 2.0, $y, 46.0, $y); $y += 2.0
                 foreach ($row in $script:receiptRows) {
-                    $g.DrawString($row.Price, $script:receiptBold, $black, [System.Drawing.RectangleF]::new(34, $y, 21, 5), $script:receiptRight)
-                    foreach ($line in $row.Lines) { $g.DrawString($line, $script:receiptBold, $black, 3.0, $y); $y += 4.2 }
-                    $y += 0.8
+                    $g.DrawString($row.Price, $script:receiptBold, $black, [System.Drawing.RectangleF]::new(29, $y, 17, 4), $script:receiptRight)
+                    foreach ($line in $row.Lines) { $g.DrawString($line, $script:receiptBold, $black, 2.0, $y); $y += 3.5 }
+                    $y += 0.5
                 }
-                $g.DrawLine($pen, 3.0, $y, 55.0, $y); $y += 2.0
-                $g.DrawString("Ara toplam", $script:receiptRegular, $black, 3.0, $y)
-                $g.DrawString((Money $script:receiptData.subtotal), $script:receiptRegular, $black, [System.Drawing.RectangleF]::new(35, $y, 20, 5), $script:receiptRight); $y += 4.5
+                $g.DrawLine($pen, 2.0, $y, 46.0, $y); $y += 2.0
+                $g.DrawString("Ara toplam", $script:receiptRegular, $black, 2.0, $y)
+                $g.DrawString((Money $script:receiptData.subtotal), $script:receiptRegular, $black, [System.Drawing.RectangleF]::new(28, $y, 18, 4), $script:receiptRight); $y += 4.0
                 if ([decimal]$script:receiptData.discount -gt 0) {
-                    $g.DrawString(("İndirim " + $script:receiptData.discountLabel), $script:receiptRegular, $black, 3.0, $y)
-                    $g.DrawString(("-" + (Money $script:receiptData.discount)), $script:receiptRegular, $black, [System.Drawing.RectangleF]::new(35, $y, 20, 5), $script:receiptRight); $y += 4.5
+                    $g.DrawString(("İndirim " + $script:receiptData.discountLabel), $script:receiptRegular, $black, 2.0, $y)
+                    $g.DrawString(("-" + (Money $script:receiptData.discount)), $script:receiptRegular, $black, [System.Drawing.RectangleF]::new(28, $y, 18, 4), $script:receiptRight); $y += 4.0
                 }
-                $g.DrawString("TOPLAM", $script:receiptLarge, $black, 3.0, $y)
-                $g.DrawString((Money $script:receiptData.total), $script:receiptLarge, $black, [System.Drawing.RectangleF]::new(31, $y, 24, 7), $script:receiptRight); $y += 8.0
-                foreach ($line in $script:receiptPaymentLines) { $g.DrawString($line, $script:receiptBold, $black, 3.0, $y); $y += 4.3 }
-                $y += 1.0; $g.DrawLine($pen, 3.0, $y, 55.0, $y); $y += 3.0
-                $g.DrawString("BU BELGE MALİ DEĞERİ OLMAYAN", $script:receiptBold, $black, [System.Drawing.RectangleF]::new(3, $y, 52, 5), $script:receiptCenter); $y += 4.3
-                $g.DrawString("BİLGİLENDİRME AMAÇLI ADİSYONDUR.", $script:receiptBold, $black, [System.Drawing.RectangleF]::new(3, $y, 52, 5), $script:receiptCenter); $y += 7.0
-                $g.DrawString("Teşekkür ederiz.", $script:receiptRegular, $black, [System.Drawing.RectangleF]::new(3, $y, 52, 5), $script:receiptCenter); $y += 4.3
-                $g.DrawString("@lemansdeli · Kaş", $script:receiptRegular, $black, [System.Drawing.RectangleF]::new(3, $y, 52, 5), $script:receiptCenter)
+                $g.DrawString("TOPLAM", $script:receiptLarge, $black, 2.0, $y)
+                $g.DrawString((Money $script:receiptData.total), $script:receiptLarge, $black, [System.Drawing.RectangleF]::new(23, $y, 23, 7), $script:receiptRight); $y += 7.0
+                foreach ($line in $script:receiptPaymentLines) { $g.DrawString($line, $script:receiptBold, $black, 2.0, $y); $y += 3.7 }
+                $y += 1.0; $g.DrawLine($pen, 2.0, $y, 46.0, $y); $y += 3.0
+                $g.DrawString("BU BELGE MALİ DEĞERİ OLMAYAN", $script:receiptBold, $black, [System.Drawing.RectangleF]::new(2, $y, 44, 5), $script:receiptCenter); $y += 4.0
+                $g.DrawString("BİLGİLENDİRME AMAÇLI ADİSYONDUR.", $script:receiptBold, $black, [System.Drawing.RectangleF]::new(2, $y, 44, 5), $script:receiptCenter); $y += 6.0
+                $g.DrawString("Teşekkür ederiz.", $script:receiptRegular, $black, [System.Drawing.RectangleF]::new(2, $y, 44, 5), $script:receiptCenter); $y += 4.0
+                $g.DrawString("@lemansdeli · Kaş", $script:receiptRegular, $black, [System.Drawing.RectangleF]::new(2, $y, 44, 5), $script:receiptCenter)
             } finally {
                 $pen.Dispose()
             }
@@ -174,7 +174,14 @@ function Print-Job($job) {
 Log "Yazici uygulamasi basladi: $($config.PrinterName)"
 while ($true) {
     try {
-        $result = Invoke-RestMethod -Uri ($api + "?workerId=" + $workerId) -Headers $headers -Method Get -TimeoutSec 15
+        # Windows PowerShell 5.1 can decode JSON without a charset as Latin-1.
+        # Read the response bytes as UTF-8 so Turkish menu names remain intact.
+        $response = Invoke-WebRequest -Uri ($api + "?workerId=" + $workerId) -Headers $headers -Method Get -UseBasicParsing -TimeoutSec 15
+        $stream = $response.RawContentStream
+        if ($stream.CanSeek) { $stream.Position = 0 }
+        $reader = New-Object System.IO.StreamReader -ArgumentList $stream, ([System.Text.Encoding]::UTF8)
+        try { $jsonText = $reader.ReadToEnd(); $result = ConvertFrom-Json -InputObject $jsonText }
+        finally { $reader.Dispose() }
         if ($null -ne $result.job) {
             $job = $result.job
             $outcome = @{ leaseToken = $job.leaseToken; ok = $true }
