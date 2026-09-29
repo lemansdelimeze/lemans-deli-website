@@ -5,8 +5,13 @@ import { parsePrintDocument, staffForPrint, workerAuthorized } from "../../../..
 export const runtime = "nodejs";
 
 export async function POST(request: NextRequest) {
-  const userId = await staffForPrint(request);
-  if (!userId) return NextResponse.json({ error: "POS oturumu bulunamadı." }, { status: 401 });
+  const auth = await staffForPrint(request);
+  if (!auth.userId) {
+    const message = auth.reason === "staff_not_allowed" ? "POS kullanıcısı yazdırmaya yetkili değil."
+      : auth.reason === "staff_lookup_failed" ? "POS yetkisi kontrol edilemedi."
+      : "POS oturumu sunucuda doğrulanamadı.";
+    return NextResponse.json({ error: message, code: auth.reason }, { status: auth.reason === "staff_lookup_failed" ? 503 : 401 });
+  }
   if (!process.env.POS_PRINT_WORKER_TOKEN || process.env.POS_PRINT_WORKER_TOKEN.length < 32) {
     return NextResponse.json({ error: "Ana bilgisayar yazıcısı henüz kurulmadı." }, { status: 503 });
   }
@@ -18,7 +23,7 @@ export async function POST(request: NextRequest) {
   if (!document) return NextResponse.json({ error: "Adisyon bilgileri eksik." }, { status: 400 });
 
   const { data, error } = await supabaseAdmin.from("pos_print_jobs")
-    .insert({ created_by: userId, receipt_number: document.receiptNumber, document })
+    .insert({ created_by: auth.userId, receipt_number: document.receiptNumber, document })
     .select("id").single();
   if (error) {
     console.error("POS print queue insert:", error.message);

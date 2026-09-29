@@ -15,13 +15,16 @@ export type PrintDocument = {
 
 export async function staffForPrint(request: NextRequest) {
   const token = request.headers.get("authorization")?.replace(/^Bearer /i, "").trim();
-  if (!token) return null;
+  if (!token) return { userId: null, reason: "token_missing" } as const;
   const { data, error } = await supabaseAdmin.auth.getUser(token);
-  if (error || !data.user) return null;
-  const { data: staff } = await supabaseAdmin.from("staff_profiles")
+  if (error || !data.user) return { userId: null, reason: "token_invalid" } as const;
+  const { data: staff, error: staffError } = await supabaseAdmin.from("staff_profiles")
     .select("active,role").eq("user_id", data.user.id).maybeSingle();
-  return staff?.active && ["cashier", "kitchen", "admin", "owner"].includes(staff.role)
-    ? data.user.id : null;
+  if (staffError) return { userId: null, reason: "staff_lookup_failed" } as const;
+  if (!staff?.active || !["cashier", "kitchen", "admin", "owner"].includes(staff.role)) {
+    return { userId: null, reason: "staff_not_allowed" } as const;
+  }
+  return { userId: data.user.id, reason: "ok" } as const;
 }
 
 export function workerAuthorized(request: NextRequest) {
