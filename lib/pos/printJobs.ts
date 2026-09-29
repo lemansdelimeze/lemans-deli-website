@@ -1,4 +1,5 @@
 import { timingSafeEqual } from "node:crypto";
+import { createClient } from "@supabase/supabase-js";
 import { NextRequest } from "next/server";
 import { supabaseAdmin } from "../supabaseAdmin";
 
@@ -14,10 +15,21 @@ export type PrintDocument = {
 };
 
 export async function staffForPrint(request: NextRequest) {
-  const token = request.headers.get("authorization")?.replace(/^Bearer /i, "").trim();
-  if (!token) return { userId: null, reason: "token_missing" } as const;
-  const { data, error } = await supabaseAdmin.auth.getUser(token);
-  if (error || !data.user) return { userId: null, reason: "token_invalid" } as const;
+  const authorization = request.headers.get("authorization");
+  if (!authorization?.match(/^Bearer\s+\S+$/i)) return { userId: null, reason: "token_missing" } as const;
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !key) return { userId: null, reason: "auth_config_missing" } as const;
+  // Use the same per-request Supabase auth flow as the existing LUCA POS endpoint.
+  const requestSupabase = createClient(url, key, {
+    global: { headers: { Authorization: authorization } },
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+  const { data, error } = await requestSupabase.auth.getUser();
+  if (error || !data.user) {
+    console.error("POS print auth rejected:", error?.code || "no_user", error?.status || "");
+    return { userId: null, reason: "token_invalid" } as const;
+  }
   const { data: staff, error: staffError } = await supabaseAdmin.from("staff_profiles")
     .select("active,role").eq("user_id", data.user.id).maybeSingle();
   if (staffError) return { userId: null, reason: "staff_lookup_failed" } as const;

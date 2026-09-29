@@ -9,8 +9,9 @@ export async function POST(request: NextRequest) {
   if (!auth.userId) {
     const message = auth.reason === "staff_not_allowed" ? "POS kullanıcısı yazdırmaya yetkili değil."
       : auth.reason === "staff_lookup_failed" ? "POS yetkisi kontrol edilemedi."
+      : auth.reason === "auth_config_missing" ? "Sunucuda POS oturum ayarları eksik."
       : "POS oturumu sunucuda doğrulanamadı.";
-    return NextResponse.json({ error: message, code: auth.reason }, { status: auth.reason === "staff_lookup_failed" ? 503 : 401 });
+    return NextResponse.json({ error: message, code: auth.reason }, { status: auth.reason === "staff_lookup_failed" || auth.reason === "auth_config_missing" ? 503 : 401 });
   }
   if (!process.env.POS_PRINT_WORKER_TOKEN || process.env.POS_PRINT_WORKER_TOKEN.length < 32) {
     return NextResponse.json({ error: "Ana bilgisayar yazıcısı henüz kurulmadı." }, { status: 503 });
