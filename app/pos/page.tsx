@@ -97,6 +97,10 @@ function sourceBadgeClass(source: string | null) {
   return "bg-slate-100 text-slate-700";
 }
 
+function cartSignature(cart: CartItem[]) {
+  return JSON.stringify(cart.map((item) => [item.lineId, item.quantity, item.unitPrice, Boolean(item.isComplimentary)]));
+}
+
 function phoneHref(phone: string | null) {
   if (!phone) return null;
   const clean = phone.replace(/[^0-9+]/g, "");
@@ -207,6 +211,11 @@ const [trendyolAutoSync, setTrendyolAutoSync] = useState(true);  const [newOrder
   const [queuingPrint, setQueuingPrint] = useState(false);
   const [discountType, setDiscountType] = useState<DiscountType>("none");
   const [discountValue, setDiscountValue] = useState("");
+  const [splitOpen, setSplitOpen] = useState(false);
+  const [splitQuantities, setSplitQuantities] = useState<Record<string, number>>({});
+  const [mergeSourceOrderId, setMergeSourceOrderId] = useState<number | null>(null);
+  const [savedCartSignature, setSavedCartSignature] = useState("");
+  const [accountLabel, setAccountLabel] = useState("");
 
   const [printedReceipt, setPrintedReceipt] = useState("");
   const [printedPayment, setPrintedPayment] = useState("");
@@ -234,7 +243,7 @@ const [trendyolAutoSync, setTrendyolAutoSync] = useState(true);  const [newOrder
       supabase.from("categories").select("id,slug,name_tr,sort_order,active").eq("active", true).order("sort_order"),
       supabase.from("menu_items").select("id,name,name_tr,price,portion,category_id,category,active,sort_order").not("price", "is", null).order("sort_order"),
       supabase.from("pos_tables").select("id,name,sort_order,active").eq("active", true).order("sort_order"),
-      supabase.from("pos_orders").select("id,table_id,total").eq("status", "open"),
+      supabase.from("pos_orders").select("id,table_id,account_table_id,account_label,total").eq("status", "open"),
       supabase
         .from("pos_orders")
         .select("id,receipt_number,order_type,table_id,customer_name,customer_phone,delivery_address,order_note,subtotal,discount_amount,total,payment_method,status,source,external_order_id,external_status,external_payload,pos_stage,invoice_status,invoice_number,invoice_error,created_at")
@@ -894,7 +903,7 @@ await loadIncomingOrdersOnly();
   async function openIncomingOrder(order: IncomingOrder) {
     const { data, error } = await supabase
       .from("pos_order_items")
-      .select("id,menu_item_id,product_name,quantity,portion_type,portion_label,weight_grams,unit_price")
+      .select("id,menu_item_id,product_name,quantity,portion_type,portion_label,weight_grams,unit_price,is_complimentary,original_unit_price")
       .eq("order_id", order.id)
       .order("id");
 
@@ -921,6 +930,8 @@ await loadIncomingOrdersOnly();
         unitPrice: Number(row.unit_price),
         displayPortion: row.portion_label,
         weightGrams: row.weight_grams,
+        isComplimentary: Boolean(row.is_complimentary),
+        originalUnitPrice: row.original_unit_price == null ? undefined : Number(row.original_unit_price),
       };
     });
 
@@ -1190,6 +1201,7 @@ await loadIncomingOrdersOnly();
     return 0;
   }, [discountType, discountValue, subtotal]);
   const total = Math.max(0, subtotal - discountAmount);
+  const accountActionsReady = orderType === "Masa" && Boolean(orderId) && cartSignature(cart) === savedCartSignature && discountAmount === 0;
   const discountLabel = discountType === "percent" && discountAmount > 0
     ? `%${Number(discountValue.replace(",", "."))}`
     : discountType === "amount" && discountAmount > 0 ? "Tutar indirimi" : "";
@@ -1209,18 +1221,23 @@ await loadIncomingOrdersOnly();
     });
   }
 
-  async function selectTable(table: PosTable) {
+  async function selectTable(table: PosTable, accountId?: number) {
     setOrderType("Masa"); setTableId(table.id); setCart([]); setOrderId(null);
+    setAccountLabel("");
+    setSplitOpen(false); setSavedCartSignature(""); setSplitQuantities({}); setMergeSourceOrderId(null);
     setCustomerName(""); setOrderNote(""); setDiscountType("none"); setDiscountValue("");
-    const { data: order, error } = await supabase
+    let query = supabase
       .from("pos_orders")
-      .select("id,customer_name,order_note,discount_type,discount_value")
-      .eq("table_id", table.id).eq("status", "open").maybeSingle();
+      .select("id,customer_name,order_note,discount_type,discount_value,account_label")
+      .eq("status", "open");
+    query = accountId ? query.eq("id", accountId).eq("account_table_id", table.id)
+      : query.eq("table_id", table.id);
+    const { data: order, error } = await query.maybeSingle();
     if (error) { alert(error.message); return; }
     if (!order) { scrollToMobileSection("pos-products"); return; }
     const { data, error: itemError } = await supabase
       .from("pos_order_items")
-      .select("id,menu_item_id,product_name,quantity,portion_type,portion_label,weight_grams,unit_price")
+      .select("id,menu_item_id,product_name,quantity,portion_type,portion_label,weight_grams,unit_price,is_complimentary,original_unit_price")
       .eq("order_id", order.id).order("id");
     if (itemError) { alert(itemError.message); return; }
     const restored = (data ?? []).map((row): CartItem => {
@@ -1241,18 +1258,23 @@ await loadIncomingOrdersOnly();
         unitPrice: Number(row.unit_price),
         displayPortion: row.portion_label,
         weightGrams: row.weight_grams,
+        isComplimentary: Boolean(row.is_complimentary),
+        originalUnitPrice: row.original_unit_price == null ? undefined : Number(row.original_unit_price),
       };
     });
-    setOrderId(order.id); setCustomerName(order.customer_name || ""); setOrderNote(order.order_note || "");
+    setOrderId(order.id); setAccountLabel(order.account_label || ""); setCustomerName(order.customer_name || ""); setOrderNote(order.order_note || "");
     setDiscountType((order.discount_type as DiscountType) || "none");
     setDiscountValue(order.discount_value ? String(order.discount_value) : "");
     setCart(restored);
+    setSavedCartSignature(cartSignature(restored));
     scrollToMobileSection("pos-products");
   }
 
   function startNonTable(type: "Paket" | "Gel-Al") {
     setOrderType(type); setTableId(null); setOrderId(null); setCart([]);
     setCustomerName(""); setOrderNote(""); setDiscountType("none"); setDiscountValue("");
+    setAccountLabel("");
+    setSavedCartSignature(""); setSplitOpen(false);
     scrollToMobileSection("pos-products");
   }
 
@@ -1267,6 +1289,22 @@ await loadIncomingOrdersOnly();
         displayPortion: portionType === "half" ? halfPortion(item.portion) : item.portion,
       }];
     });
+  }
+
+  function toggleComplimentary(lineId: string) {
+    setCart((current) => current.flatMap((item) => {
+      if (item.lineId !== lineId) return [item];
+      if (!item.isComplimentary && item.quantity > 1) {
+        return [{ ...item, quantity: item.quantity - 1 }, {
+          ...item, quantity: 1, isComplimentary: true, originalUnitPrice: item.unitPrice,
+          unitPrice: 0, lineId: `${item.id}-${item.portionType}-gift-${crypto.randomUUID()}`,
+        }];
+      }
+      return [{ ...item, isComplimentary: !item.isComplimentary,
+        originalUnitPrice: item.isComplimentary ? undefined : item.unitPrice,
+        unitPrice: item.isComplimentary ? (item.originalUnitPrice ?? 0) : 0,
+        lineId: item.lineId.startsWith("saved-") ? item.lineId : `${item.id}-${item.portionType}-${item.isComplimentary ? "paid" : "gift"}-${crypto.randomUUID()}` }];
+    }));
   }
 
   function addWeight() {
@@ -1291,6 +1329,46 @@ await loadIncomingOrdersOnly();
       .filter((item) => item.quantity > 0));
   }
 
+  async function splitTableOrder() {
+    if (!accountActionsReady || !orderId) return;
+    const lines = cart.map((item) => ({ id: Number(item.lineId.replace("saved-", "")), quantity: splitQuantities[item.lineId] || 0 }))
+      .filter((item) => item.quantity > 0);
+    if (!lines.length || lines.some((item) => !Number.isSafeInteger(item.id)) ||
+      lines.reduce((sum, item) => sum + item.quantity, 0) >= cart.reduce((sum, item) => sum + item.quantity, 0)) {
+      alert("Ayıracağınız ürünleri seçin; kaynak adisyonda en az bir ürün kalsın."); return;
+    }
+    setSaving(true);
+    try {
+      const { error } = await supabase.rpc("pos_split_table_order", {
+        p_order_id: orderId, p_lines: lines,
+      });
+      if (error) throw error;
+      const table = tables.find((entry) => entry.id === tableId);
+      if (table) await selectTable(table, accountLabel ? orderId : undefined);
+      await loadData();
+      alert("Seçilen ürünler aynı masada yeni bir açık hesaba ayrıldı.");
+    } catch (error) { alert(error instanceof Error ? error.message : "Hesap ayrılamadı."); }
+    finally { setSaving(false); }
+  }
+
+  async function mergeTableOrder() {
+    if (!accountActionsReady || !orderId || accountLabel || !mergeSourceOrderId) return;
+    const sourceTable = openOrders.find((entry) => entry.id === mergeSourceOrderId);
+    if (!sourceTable || !window.confirm("Diğer masanın tüm ürünleri bu adisyona taşınacak. Devam edilsin mi?")) return;
+    setSaving(true);
+    try {
+      const { error } = await supabase.rpc("pos_merge_table_orders", {
+        p_target_order_id: orderId, p_source_order_id: mergeSourceOrderId,
+      });
+      if (error) throw error;
+      const table = tables.find((entry) => entry.id === tableId);
+      if (table) await selectTable(table);
+      await loadData();
+      alert("Adisyonlar ana hesapta birleştirildi.");
+    } catch (error) { alert(error instanceof Error ? error.message : "Adisyonlar birleştirilemedi."); }
+    finally { setSaving(false); }
+  }
+
   async function replaceItems(targetOrderId: number) {
     const { error: deleteError } = await supabase.from("pos_order_items").delete().eq("order_id", targetOrderId);
     if (deleteError) throw deleteError;
@@ -1305,6 +1383,8 @@ await loadIncomingOrdersOnly();
       weight_grams: item.weightGrams,
       unit_price: item.unitPrice,
       line_total: item.unitPrice * item.quantity,
+      is_complimentary: Boolean(item.isComplimentary),
+      original_unit_price: item.isComplimentary ? item.originalUnitPrice ?? 0 : null,
     })));
     if (error) throw error;
   }
@@ -1347,6 +1427,10 @@ await loadIncomingOrdersOnly();
 
 await replaceItems(targetOrderId);
 await loadData();
+      if (orderType === "Masa" && tableId) {
+        const table = tables.find((entry) => entry.id === tableId);
+      if (table) await selectTable(table, accountLabel ? targetOrderId : undefined);
+      }
       alert(orderType === "Masa" ? "Adisyon masaya kaydedildi." : "Sipariş beklemeye alındı.");
     } catch (error) {
       alert(error instanceof Error ? error.message : "Kaydedilemedi.");
@@ -1511,7 +1595,7 @@ await loadData();
 
   async function printCurrentOrder() {
     if (!cart.length) { alert("Sipariş boş."); return; }
-    const label = orderType === "Masa" ? tables.find((table) => table.id === tableId)?.name || "Masa" : orderType;
+    const label = orderType === "Masa" ? `${tables.find((table) => table.id === tableId)?.name || "Masa"}${accountLabel ? ` · ${accountLabel}` : ""}` : orderType;
     setQueuingPrint(true);
     try {
       await queuePosPrint({
@@ -1521,7 +1605,7 @@ await loadData();
         paymentLabel: "ÖDENMEDİ / AÇIK ADİSYON",
         subtotal, discount: discountAmount, discountLabel, total,
         items: cart.map((item) => ({
-          name: `${item.portionType === "half" ? "½ " : ""}${nameOf(item)}${item.displayPortion ? ` (${item.displayPortion})` : ""}`,
+          name: `${item.portionType === "half" ? "½ " : ""}${nameOf(item)}${item.displayPortion ? ` (${item.displayPortion})` : ""}${item.isComplimentary ? " · İKRAM" : ""}`,
           quantity: item.quantity, lineTotal: item.unitPrice * item.quantity,
         })),
       });
@@ -1539,7 +1623,7 @@ await loadData();
     setSaving(true);
     try {
       const nextReceipt = receiptNo();
-      const label = orderType === "Masa" ? tables.find((table) => table.id === tableId)?.name || "Masa" : orderType;
+      const label = orderType === "Masa" ? `${tables.find((table) => table.id === tableId)?.name || "Masa"}${accountLabel ? ` · ${accountLabel}` : ""}` : orderType;
       const paymentLabel = payment === "internal" ? `${PAYMENT_LABELS[payment]} – ${internalReason}` : PAYMENT_LABELS[payment];
       let targetOrderId = orderId;
       const amounts = {
@@ -1599,7 +1683,7 @@ await loadData();
             orderNote,
             subtotal, discount: discountAmount, discountLabel, total,
             items: cart.map((item) => ({
-              name: `${item.portionType === "half" ? "½ " : ""}${nameOf(item)}${item.displayPortion ? ` (${item.displayPortion})` : ""}`,
+              name: `${item.portionType === "half" ? "½ " : ""}${nameOf(item)}${item.displayPortion ? ` (${item.displayPortion})` : ""}${item.isComplimentary ? " · İKRAM" : ""}`,
               quantity: item.quantity, lineTotal: item.unitPrice * item.quantity,
             })),
           });
@@ -1607,7 +1691,7 @@ await loadData();
           alert(`Adisyon kapandı ancak ana bilgisayara yazdırılamadı: ${error instanceof Error ? error.message : "Kuyruk hatası"}`);
         }
       }
-      setCart([]); setOrderId(null); setTableId(null); setCustomerName(""); setOrderNote("");
+      setCart([]); setOrderId(null); setTableId(null); setAccountLabel(""); setCustomerName(""); setOrderNote("");
       setDiscountType("none"); setDiscountValue("");
       await loadData();
     } catch (error) {
@@ -2245,11 +2329,12 @@ await loadData();
             <h2 className="mb-3 text-xl font-bold text-[#6e1f12]" style={{ fontFamily: BRAND_FONT }}>Masalar</h2>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-8">
               {tables.map((table) => {
-                const open = openOrders.find((order) => order.table_id === table.id);
+                const accounts = openOrders.filter((order) => order.table_id === table.id || order.account_table_id === table.id);
+                const open = accounts.length > 0;
                 const selected = tableId === table.id && orderType === "Masa";
                 return (
                   <button key={table.id} type="button" onClick={() => void selectTable(table)} className={`rounded-2xl border p-4 text-left ${selected ? "border-[#6e1f12] ring-2 ring-[#6e1f12]/20" : open ? "border-red-800/30 bg-red-50" : "border-green-800/20 bg-green-50"}`}>
-                    <p className="font-bold">{table.name}</p><p className="mt-2 text-xs opacity-60">{open ? `${money(open.total)} ₺` : "Boş"}</p>
+                    <p className="font-bold">{table.name}</p><p className="mt-2 text-xs opacity-60">{open ? `${accounts.length} hesap · ${money(accounts.reduce((sum, account) => sum + Number(account.total), 0))} ₺` : "Boş"}</p>
                   </button>
                 );
               })}
@@ -2259,7 +2344,7 @@ await loadData();
           <div className="grid min-w-0 gap-5 lg:grid-cols-[minmax(0,1fr)_410px]">
             <section id="pos-products" className="min-w-0 scroll-mt-4">
               <div className="mb-4 rounded-2xl bg-white px-4 py-3 text-sm font-semibold text-[#6e1f12]">
-                Aktif işlem: {orderType === "Masa" ? tables.find((table) => table.id === tableId)?.name || "Masa seçilmedi" : orderType}
+                Aktif işlem: {orderType === "Masa" ? `${tables.find((table) => table.id === tableId)?.name || "Masa seçilmedi"}${accountLabel ? ` · ${accountLabel}` : ""}` : orderType}
               </div>
               <label htmlFor="pos-product-search" className="mb-2 block text-sm font-bold text-[#6e1f12]">Ürün ara</label>
               <div className="mb-4 flex min-w-0 gap-2">
@@ -2310,18 +2395,27 @@ await loadData();
 
             <aside id="pos-current-order" className="h-fit scroll-mt-4 rounded-3xl border border-[#6e1f12]/10 bg-white p-5 shadow-sm lg:sticky lg:top-5">
               <h2 className="text-2xl font-bold text-[#6e1f12]" style={{ fontFamily: BRAND_FONT }}>Adisyon</h2>
+              {orderType === "Masa" && tableId && openOrders.some((entry) => entry.account_table_id === tableId) && (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button type="button" onClick={() => { const table = tables.find((entry) => entry.id === tableId); if (table) void selectTable(table); }} className={`rounded-lg border px-3 py-2 text-xs font-bold ${!accountLabel ? "bg-[#6e1f12] text-white" : ""}`}>Ana hesap</button>
+                  {openOrders.filter((entry) => entry.account_table_id === tableId).map((entry) => (
+                    <button key={entry.id} type="button" onClick={() => { const table = tables.find((item) => item.id === tableId); if (table) void selectTable(table, entry.id); }} className={`rounded-lg border px-3 py-2 text-xs font-bold ${orderId === entry.id ? "bg-[#6e1f12] text-white" : ""}`}>{entry.account_label || `Hesap ${entry.id}`} · {money(entry.total)} ₺</button>
+                  ))}
+                </div>
+              )}
               <input value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Müşteri adı" className="mt-4 w-full rounded-xl border px-3 py-3" />
               <div className="mt-5 space-y-3">
                 {!cart.length ? <p className="rounded-xl bg-[#f4efe5] px-4 py-6 text-center text-sm opacity-50">Henüz ürün eklenmedi.</p> : cart.map((item) => (
                   <div key={item.lineId} className="rounded-xl border p-3">
                     <div className="flex items-start justify-between gap-3">
-                      <div><p className="font-semibold">{item.portionType === "half" ? "½ " : ""}{nameOf(item)}</p>{item.displayPortion && <p className="mt-1 text-xs opacity-50">{item.displayPortion}</p>}</div>
+                      <div><p className="font-semibold">{item.portionType === "half" ? "½ " : ""}{nameOf(item)}{item.isComplimentary ? " · İKRAM" : ""}</p>{item.displayPortion && <p className="mt-1 text-xs opacity-50">{item.displayPortion}</p>}</div>
                       <p className="shrink-0 font-bold">{money(item.unitPrice * item.quantity)} ₺</p>
                     </div>
                     <div className="mt-3 flex items-center gap-2">
                       <button type="button" onClick={() => changeQuantity(item.lineId, -1)} className="h-9 w-9 rounded-full border">−</button>
                       <span className="min-w-8 text-center font-bold">{item.quantity}</span>
                       <button type="button" onClick={() => changeQuantity(item.lineId, 1)} className="h-9 w-9 rounded-full border">+</button>
+                      <button type="button" onClick={() => toggleComplimentary(item.lineId)} className={`ml-auto rounded-lg border px-2 py-2 text-xs font-bold ${item.isComplimentary ? "border-amber-600 bg-amber-100 text-amber-900" : ""}`}>{item.isComplimentary ? "İkramı kaldır" : item.quantity > 1 ? "1 adet ikram" : "İkram yap"}</button>
                     </div>
                   </div>
                 ))}
@@ -2346,6 +2440,40 @@ await loadData();
                 {discountAmount > 0 && <div className="flex justify-between text-[#6e1f12]"><span>İndirim {discountLabel}</span><span>-{money(discountAmount)} ₺</span></div>}
                 <div className="flex justify-between pt-2 text-lg font-semibold"><span>Ödenecek</span><span className="text-2xl font-bold text-[#6e1f12]">{money(total)} ₺</span></div>
               </div>
+
+              {orderType === "Masa" && orderId && (
+                <div className="mt-5 rounded-2xl border border-[#6e1f12]/20 bg-[#faf7f0] p-4">
+                  <p className="font-bold text-[#6e1f12]">Hesap işlemleri</p>
+                  {!accountActionsReady && <p className="mt-1 text-xs text-amber-900">Önce değişiklikleri Masaya Kaydet ile kaydedin; genel indirim varsa kaldırın.</p>}
+                  <div className="mt-3 flex gap-2">
+                    <button type="button" disabled={!accountActionsReady || saving} onClick={() => setSplitOpen((value) => !value)} className="rounded-xl border bg-white px-3 py-2 text-sm font-bold disabled:opacity-40">Hesabı Ayır</button>
+                    {!accountLabel && <button type="button" disabled={!accountActionsReady || saving} onClick={() => setSplitOpen(false)} className="rounded-xl border bg-white px-3 py-2 text-sm font-bold disabled:opacity-40">Birleştir</button>}
+                  </div>
+                  {splitOpen && accountActionsReady ? (
+                    <div className="mt-3 space-y-3 text-sm">
+                      <p>Yeni adisyona taşınacak miktarlar:</p>
+                      {cart.map((item) => (
+                        <label key={item.lineId} className="flex items-center justify-between gap-2">
+                          <span>{nameOf(item)}{item.isComplimentary ? " (İkram)" : ""} · {item.quantity} adet</span>
+                          <input type="number" min="0" max={item.quantity} step="1" value={splitQuantities[item.lineId] || 0}
+                            onChange={(event) => setSplitQuantities((current) => ({ ...current, [item.lineId]: Math.max(0, Math.min(item.quantity, Math.floor(Number(event.target.value) || 0))) }))}
+                            className="w-20 rounded-lg border px-2 py-2 text-right" />
+                        </label>
+                      ))}
+                      <button type="button" onClick={() => void splitTableOrder()} disabled={saving} className="w-full rounded-xl bg-[#6e1f12] p-3 font-bold text-white disabled:opacity-40">Aynı Masada Yeni Hesap Aç</button>
+                    </div>
+                  ) : accountActionsReady && !accountLabel && (
+                    <div className="mt-3 flex gap-2">
+                      <select value={mergeSourceOrderId ?? ""} onChange={(event) => setMergeSourceOrderId(Number(event.target.value) || null)} className="min-w-0 flex-1 rounded-xl border bg-white p-2 text-sm">
+                        <option value="">Birleştirilecek açık masa</option>
+                        {openOrders.filter((order) => order.id !== orderId && (order.table_id != null || order.account_table_id === tableId)).map((order) =>
+                          <option key={order.id} value={order.id}>{tables.find((table) => table.id === (order.table_id ?? order.account_table_id))?.name || `Masa ${order.table_id ?? order.account_table_id}`}{order.account_label ? ` · ${order.account_label}` : ""} · {money(order.total)} ₺</option>)}
+                      </select>
+                      <button type="button" onClick={() => void mergeTableOrder()} disabled={saving || !mergeSourceOrderId} className="rounded-xl bg-[#6e1f12] px-3 text-sm font-bold text-white disabled:opacity-40">Birleştir</button>
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div className="mt-5 grid grid-cols-2 gap-3">
                 <button type="button" onClick={() => void printCurrentOrder()} disabled={!cart.length || queuingPrint} className="rounded-xl border px-4 py-4 font-bold disabled:opacity-40">{queuingPrint ? "Gönderiliyor..." : "Adisyon Yazdır"}</button>

@@ -46,10 +46,14 @@ export type CartItem = MenuItem & {
   unitPrice: number;
   displayPortion: string | null;
   weightGrams: number | null;
+  isComplimentary?: boolean;
+  originalUnitPrice?: number;
 };
 
 export type OpenOrder = {
   id: number;
   table_id: number | null;
+  account_table_id: number | null;
+  account_label: string | null;
   total: number;
 };

@@ -39,6 +39,7 @@ export default function Receipt(props: Props) {
               {item.portionType === "half" ? "½ " : ""}
               {nameOf(item)}
               {item.displayPortion ? ` (${item.displayPortion})` : ""}
+              {item.isComplimentary ? " · İKRAM" : ""}
             </span>
             <span className="whitespace-nowrap text-right">{money(item.unitPrice * item.quantity)}</span>
           </div>

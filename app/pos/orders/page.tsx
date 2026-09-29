@@ -18,6 +18,8 @@ type PosOrder = {
   receipt_number: string;
   order_type: string;
   table_id: number | null;
+  account_table_id: number | null;
+  account_label: string | null;
   customer_name: string | null;
   order_note: string | null;
   subtotal: number;
@@ -45,6 +47,7 @@ type PosOrderItem = {
   portion_label: string | null;
   unit_price: number;
   line_total: number;
+  is_complimentary: boolean;
 };
 
 type PosTable = { id: number; name: string };
@@ -101,7 +104,7 @@ export default function PosOrdersPage() {
     let query = supabase
       .from("pos_orders")
       .select(`
-        id, receipt_number, order_type, table_id, customer_name, order_note,
+        id, receipt_number, order_type, table_id, account_table_id, account_label, customer_name, order_note,
         subtotal, discount_amount, total, payment_method, source,
         cash_amount, card_amount, meal_card_amount,
         internal_reason, invoice_status, invoice_number, invoice_error, created_at, closed_at
@@ -146,7 +149,7 @@ export default function PosOrdersPage() {
   const tableName = useCallback(
     (order: PosOrder) => {
       if (order.order_type !== "Masa") return order.order_type;
-      return tables.find((table) => table.id === order.table_id)?.name ?? "Masa";
+      return `${tables.find((table) => table.id === (order.table_id ?? order.account_table_id))?.name ?? "Masa"}${order.account_label ? ` · ${order.account_label}` : ""}`;
     },
     [tables]
   );
@@ -193,7 +196,7 @@ export default function PosOrdersPage() {
     setDetailLoading(true);
     const { data, error } = await supabase
       .from("pos_order_items")
-      .select("id, order_id, product_name, quantity, portion_type, portion_label, unit_price, line_total")
+      .select("id, order_id, product_name, quantity, portion_type, portion_label, unit_price, line_total, is_complimentary")
       .eq("order_id", order.id)
       .order("id");
 
@@ -221,7 +224,7 @@ export default function PosOrdersPage() {
         discountLabel: "",
         total: Number(selectedOrder.total),
         items: selectedItems.map((item) => ({
-          name: `${item.portion_type === "half" ? "½ " : ""}${item.product_name}${item.portion_label ? ` (${item.portion_label})` : ""}`,
+          name: `${item.portion_type === "half" ? "½ " : ""}${item.product_name}${item.portion_label ? ` (${item.portion_label})` : ""}${item.is_complimentary ? " · İKRAM" : ""}`,
           quantity: Number(item.quantity), lineTotal: Number(item.line_total),
         })),
       });
@@ -410,7 +413,7 @@ export default function PosOrdersPage() {
                     {selectedItems.map((item) => (
                       <div key={item.id} className="flex items-start justify-between gap-4 rounded-xl border p-3">
                         <div>
-                          <p className="font-semibold">{Number(item.quantity) > 1 ? `${item.quantity} × ` : ""}{item.portion_type === "half" ? "½ " : ""}{item.product_name}</p>
+                          <p className="font-semibold">{Number(item.quantity) > 1 ? `${item.quantity} × ` : ""}{item.portion_type === "half" ? "½ " : ""}{item.product_name}{item.is_complimentary ? " · İKRAM" : ""}</p>
                           {item.portion_label && <p className="mt-1 text-xs opacity-50">{item.portion_label}</p>}
                         </div>
                         <p className="shrink-0 font-bold">{money(item.line_total)} ₺</p>
@@ -476,7 +479,7 @@ export default function PosOrdersPage() {
               <div className="space-y-2 text-[10px] font-semibold leading-[1.3]">
                 {selectedItems.map((item) => (
                   <div key={item.id} className="grid grid-cols-[1fr_auto] gap-1.5">
-                    <span className="min-w-0 break-words pr-1">{Number(item.quantity) > 1 ? `${item.quantity} x ` : ""}{item.portion_type === "half" ? "½ " : ""}{item.product_name}{item.portion_label ? ` (${item.portion_label})` : ""}</span>
+                    <span className="min-w-0 break-words pr-1">{Number(item.quantity) > 1 ? `${item.quantity} x ` : ""}{item.portion_type === "half" ? "½ " : ""}{item.product_name}{item.portion_label ? ` (${item.portion_label})` : ""}{item.is_complimentary ? " · İKRAM" : ""}</span>
                     <span className="whitespace-nowrap text-right">{money(item.line_total)}</span>
                   </div>
                 ))}
