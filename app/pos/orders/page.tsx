@@ -214,6 +214,7 @@ export default function PosOrdersPage() {
       await queuePosPrint({
         receiptNumber: selectedOrder.receipt_number,
         orderLabel: tableName(selectedOrder),
+        orderNote: selectedOrder.order_note || "",
         paymentLabel: PAYMENT_LABELS[selectedOrder.payment_method] ?? selectedOrder.payment_method,
         subtotal: Number(selectedOrder.subtotal),
         discount: Number(selectedOrder.discount_amount || 0),
@@ -480,6 +481,12 @@ export default function PosOrdersPage() {
                   </div>
                 ))}
               </div>
+              {selectedOrder.order_note && (
+                <div className="mt-2 border-t border-dashed border-black pt-2 text-[9px] leading-[1.4]">
+                  <p className="font-bold">SİPARİŞ NOTU</p>
+                  <p className="whitespace-pre-wrap break-words">{selectedOrder.order_note}</p>
+                </div>
+              )}
               <div className="my-2 border-t border-dashed border-black" />
               <div className="space-y-1 text-[9px]">
                 <div className="grid grid-cols-[1fr_auto]"><span>Ara toplam</span><span>{money(selectedOrder.subtotal)} ₺</span></div>

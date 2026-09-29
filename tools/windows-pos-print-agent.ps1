@@ -89,9 +89,10 @@ function Print-Job($job) {
     $labelLines = @(Wrap ("Sipariş: " + $data.orderLabel) 36)
     $numberLines = @(Wrap ("Adisyon No: " + $data.receiptNumber) 36)
     $paymentLines = if ($data.paymentLabel) { @(Wrap ("Durum: " + $data.paymentLabel) 36) } else { @() }
+    $noteLines = if ($data.orderNote) { @(Wrap ([string]$data.orderNote) 36) } else { @() }
     $rowHeight = 0.0
     foreach ($row in $rows) { $rowHeight += 4.0 + (3.5 * ($row.Lines.Count - 1)) }
-    $paperMm = [Math]::Max(80, 90 + ($numberLines.Count + $labelLines.Count - 2 + $paymentLines.Count) * 3.7 + $rowHeight + $(if ([decimal]$data.discount -gt 0) { 4 } else { 0 }))
+    $paperMm = [Math]::Max(80, 98 + ($numberLines.Count + $labelLines.Count - 2 + $paymentLines.Count) * 3.7 + $rowHeight + $(if ([decimal]$data.discount -gt 0) { 4 } else { 0 }) + $(if ($noteLines.Count) { 8 + $noteLines.Count * 3.7 } else { 0 }))
     $document = New-Object System.Drawing.Printing.PrintDocument
     $regular = New-Object System.Drawing.Font -ArgumentList "Consolas", 6.5
     $bold = New-Object System.Drawing.Font -ArgumentList "Consolas", 7.5, ([System.Drawing.FontStyle]::Bold)
@@ -114,6 +115,7 @@ function Print-Job($job) {
         $script:receiptLabelLines = $labelLines
         $script:receiptNumberLines = $numberLines
         $script:receiptPaymentLines = $paymentLines
+        $script:receiptNoteLines = $noteLines
         $script:receiptRegular = $regular
         $script:receiptBold = $bold
         $script:receiptLarge = $large
@@ -142,6 +144,12 @@ function Print-Job($job) {
                     foreach ($line in $row.Lines) { $g.DrawString($line, $script:receiptBold, $black, 2.0, $y); $y += 3.5 }
                     $y += 0.5
                 }
+                if ($script:receiptNoteLines.Count) {
+                    $g.DrawLine($pen, 2.0, $y, 46.0, $y); $y += 2.0
+                    $g.DrawString("SİPARİŞ NOTU", $script:receiptBold, $black, 2.0, $y); $y += 4.0
+                    foreach ($line in $script:receiptNoteLines) { $g.DrawString($line, $script:receiptRegular, $black, 2.0, $y); $y += 3.7 }
+                    $y += 1.0
+                }
                 $g.DrawLine($pen, 2.0, $y, 46.0, $y); $y += 2.0
                 $g.DrawString("Ara toplam", $script:receiptRegular, $black, 2.0, $y)
                 $g.DrawString((Money $script:receiptData.subtotal), $script:receiptRegular, $black, [System.Drawing.RectangleF]::new(28, $y, 18, 4), $script:receiptRight); $y += 4.0
@@ -154,7 +162,8 @@ function Print-Job($job) {
                 foreach ($line in $script:receiptPaymentLines) { $g.DrawString($line, $script:receiptBold, $black, 2.0, $y); $y += 3.7 }
                 $y += 1.0; $g.DrawLine($pen, 2.0, $y, 46.0, $y); $y += 3.0
                 $g.DrawString("BU BELGE MALİ DEĞERİ OLMAYAN", $script:receiptBold, $black, [System.Drawing.RectangleF]::new(2, $y, 44, 5), $script:receiptCenter); $y += 4.0
-                $g.DrawString("BİLGİLENDİRME AMAÇLI ADİSYONDUR.", $script:receiptBold, $black, [System.Drawing.RectangleF]::new(2, $y, 44, 5), $script:receiptCenter); $y += 6.0
+                $g.DrawString("BİLGİLENDİRME AMAÇLI", $script:receiptBold, $black, [System.Drawing.RectangleF]::new(2, $y, 44, 5), $script:receiptCenter); $y += 4.0
+                $g.DrawString("ADİSYONDUR.", $script:receiptBold, $black, [System.Drawing.RectangleF]::new(2, $y, 44, 5), $script:receiptCenter); $y += 6.0
                 $g.DrawString("Teşekkür ederiz.", $script:receiptRegular, $black, [System.Drawing.RectangleF]::new(2, $y, 44, 5), $script:receiptCenter); $y += 4.0
                 $g.DrawString("@lemansdeli · Kaş", $script:receiptRegular, $black, [System.Drawing.RectangleF]::new(2, $y, 44, 5), $script:receiptCenter)
             } finally {

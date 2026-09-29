@@ -3,6 +3,7 @@ import { supabase } from "../../lib/supabase";
 export type PrintDocumentInput = {
   receiptNumber: string;
   orderLabel: string;
+  orderNote?: string;
   paymentLabel: string;
   subtotal: number;
   discount: number;

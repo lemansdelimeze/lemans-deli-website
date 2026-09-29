@@ -6,6 +6,7 @@ import { money, nameOf } from "./utils";
 type Props = {
   receiptNumber: string;
   orderLabel: string;
+  orderNote?: string;
   paymentLabel: string;
   cart: CartItem[];
   subtotal: number;
@@ -43,6 +44,12 @@ export default function Receipt(props: Props) {
           </div>
         ))}
       </div>
+      {props.orderNote?.trim() && (
+        <div className="mt-2 border-t border-dashed border-black pt-2 text-[9px] leading-[1.4]">
+          <p className="font-bold">SİPARİŞ NOTU</p>
+          <p className="whitespace-pre-wrap break-words">{props.orderNote}</p>
+        </div>
+      )}
       <div className="my-2 border-t border-dashed border-black" />
       <div className="space-y-1 text-[9px]">
         <div className="grid grid-cols-[1fr_auto]"><span>Ara toplam</span><span>{money(props.subtotal)} ₺</span></div>

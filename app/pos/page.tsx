@@ -216,6 +216,7 @@ const [trendyolAutoSync, setTrendyolAutoSync] = useState(true);  const [newOrder
   const [printedDiscountLabel, setPrintedDiscountLabel] = useState("");
   const [printedTotal, setPrintedTotal] = useState(0);
   const [printedOrderLabel, setPrintedOrderLabel] = useState("");
+  const [printedOrderNote, setPrintedOrderNote] = useState("");
 
   const canCancelOrder = staffRole === "admin" || staffRole === "owner";
 
@@ -1503,6 +1504,7 @@ await loadData();
 
   function preparePrint(label: string, paymentLabel: string, nextReceipt: string) {
     setPrintedReceipt(nextReceipt); setPrintedPayment(paymentLabel); setPrintedCart([...cart]);
+    setPrintedOrderNote(orderNote);
     setPrintedSubtotal(subtotal); setPrintedDiscount(discountAmount); setPrintedDiscountLabel(discountLabel);
     setPrintedTotal(total); setPrintedOrderLabel(label);
   }
@@ -1515,6 +1517,7 @@ await loadData();
       await queuePosPrint({
         receiptNumber: orderId ? `AÇIK-${orderId}` : `AÇIK-${receiptNo()}`,
         orderLabel: label,
+        orderNote,
         paymentLabel: "ÖDENMEDİ / AÇIK ADİSYON",
         subtotal, discount: discountAmount, discountLabel, total,
         items: cart.map((item) => ({
@@ -1593,6 +1596,7 @@ await loadData();
         try {
           await queuePosPrint({
             receiptNumber: nextReceipt, orderLabel: label, paymentLabel,
+            orderNote,
             subtotal, discount: discountAmount, discountLabel, total,
             items: cart.map((item) => ({
               name: `${item.portionType === "half" ? "½ " : ""}${nameOf(item)}${item.displayPortion ? ` (${item.displayPortion})` : ""}`,
@@ -2517,7 +2521,7 @@ await loadData();
             </div>
           </div>
         )}
-        <Receipt receiptNumber={printedReceipt} orderLabel={printedOrderLabel} paymentLabel={printedPayment} cart={printedCart} subtotal={printedSubtotal} discount={printedDiscount} discountLabel={printedDiscountLabel} total={printedTotal} />
+        <Receipt receiptNumber={printedReceipt} orderLabel={printedOrderLabel} orderNote={printedOrderNote} paymentLabel={printedPayment} cart={printedCart} subtotal={printedSubtotal} discount={printedDiscount} discountLabel={printedDiscountLabel} total={printedTotal} />
       </main>
 
     </>

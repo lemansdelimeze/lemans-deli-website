@@ -6,6 +6,7 @@ import { supabaseAdmin } from "../supabaseAdmin";
 export type PrintDocument = {
   receiptNumber: string;
   orderLabel: string;
+  orderNote?: string;
   paymentLabel: string;
   subtotal: number;
   discount: number;
@@ -82,6 +83,7 @@ export function parsePrintDocument(value: unknown): PrintDocument | null {
   });
   if (items.some((item) => !item)) return null;
   return { receiptNumber, orderLabel, paymentLabel, subtotal, discount,
+    orderNote: text(doc.orderNote, 500),
     discountLabel: text(doc.discountLabel, 100), total,
     items: items as PrintDocument["items"] };
 }
