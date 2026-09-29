@@ -1201,6 +1201,13 @@ await loadIncomingOrdersOnly();
       : 0;
   }, [weightInput, weightItem]);
 
+  function scrollToMobileSection(id: string) {
+    if (!window.matchMedia("(max-width: 1023px)").matches) return;
+    window.requestAnimationFrame(() => {
+      document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }
+
   async function selectTable(table: PosTable) {
     setOrderType("Masa"); setTableId(table.id); setCart([]); setOrderId(null);
     setCustomerName(""); setOrderNote(""); setDiscountType("none"); setDiscountValue("");
@@ -1209,7 +1216,7 @@ await loadIncomingOrdersOnly();
       .select("id,customer_name,order_note,discount_type,discount_value")
       .eq("table_id", table.id).eq("status", "open").maybeSingle();
     if (error) { alert(error.message); return; }
-    if (!order) return;
+    if (!order) { scrollToMobileSection("pos-products"); return; }
     const { data, error: itemError } = await supabase
       .from("pos_order_items")
       .select("id,menu_item_id,product_name,quantity,portion_type,portion_label,weight_grams,unit_price")
@@ -1239,11 +1246,13 @@ await loadIncomingOrdersOnly();
     setDiscountType((order.discount_type as DiscountType) || "none");
     setDiscountValue(order.discount_value ? String(order.discount_value) : "");
     setCart(restored);
+    scrollToMobileSection("pos-products");
   }
 
   function startNonTable(type: "Paket" | "Gel-Al") {
     setOrderType(type); setTableId(null); setOrderId(null); setCart([]);
     setCustomerName(""); setOrderNote(""); setDiscountType("none"); setDiscountValue("");
+    scrollToMobileSection("pos-products");
   }
 
   function addStandard(item: MenuItem, portionType: PortionType) {
@@ -1710,7 +1719,7 @@ await loadData();
         }
       `}</style>
 
-      <main className="min-h-screen min-w-0 overflow-x-hidden bg-[#f4efe5] text-[#292821]">
+      <main className="min-h-screen min-w-0 overflow-x-hidden bg-[#f4efe5] pb-28 text-[#292821] lg:pb-0">
         <div className="no-print mx-auto w-full max-w-[1500px] min-w-0 px-3 py-4 sm:px-4 sm:py-5">
           <header className="mb-5 flex flex-col gap-4 border-b border-[#6e1f12]/15 pb-5 md:flex-row md:items-center md:justify-between">
             <div>
@@ -1734,7 +1743,7 @@ await loadData();
               <button
                 type="button"
                 onClick={() => void handleLogout()}
-                className="rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm font-semibold text-red-700"
+                className="hidden rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm font-semibold text-red-700 lg:inline-flex"
               >
                 Çıkış
               </button>
@@ -2295,7 +2304,7 @@ await loadData();
               )}
             </section>
 
-            <aside className="h-fit rounded-3xl border border-[#6e1f12]/10 bg-white p-5 shadow-sm lg:sticky lg:top-5">
+            <aside id="pos-current-order" className="h-fit scroll-mt-4 rounded-3xl border border-[#6e1f12]/10 bg-white p-5 shadow-sm lg:sticky lg:top-5">
               <h2 className="text-2xl font-bold text-[#6e1f12]" style={{ fontFamily: BRAND_FONT }}>Adisyon</h2>
               <input value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Müşteri adı" className="mt-4 w-full rounded-xl border px-3 py-3" />
               <div className="mt-5 space-y-3">
@@ -2351,6 +2360,17 @@ await loadData();
               <button type="button" onClick={() => { if (!cart.length) return; setPaymentOpen(true); setPayment("cash"); setCash(""); setCard(""); setMealCard(""); }} disabled={saving || !cart.length} className="mt-3 w-full rounded-xl bg-[#6e1f12] px-4 py-4 font-bold text-white disabled:opacity-40">Hesabı Kapat</button>
             </aside>
           </div>
+        </div>
+
+        <div className="no-print fixed bottom-[max(1rem,env(safe-area-inset-bottom))] right-3 z-40 flex flex-col items-end gap-2 lg:hidden">
+          {(orderType !== "Masa" || tableId !== null || cart.length > 0) && (
+            <button type="button" onClick={() => scrollToMobileSection("pos-current-order")} className="rounded-full bg-[#6e1f12] px-5 py-3 text-sm font-bold text-white shadow-lg shadow-black/25">
+              Adisyona Git {cart.length > 0 ? `(${cart.length})` : ""} ↓
+            </button>
+          )}
+          <button type="button" onClick={() => void handleLogout()} className="rounded-full border border-red-200 bg-red-50 px-4 py-2 text-xs font-semibold text-red-700 shadow-md">
+            Çıkış
+          </button>
         </div>
 
         {newOrderNotice && (
