@@ -1,10 +1,11 @@
-param([switch]$Setup)
+﻿param([switch]$Setup)
 
 $ErrorActionPreference = "Stop"
 $root = Join-Path $env:LOCALAPPDATA "LemansDeliPrint"
 $configPath = Join-Path $root "config.json"
 $agentPath = Join-Path $root "print-agent.ps1"
 $logPath = Join-Path $root "agent.log"
+$logoPath = Join-Path $root "logo-pos.png"
 $api = "https://lemansdeli.com/api/pos/print-jobs"
 
 function Log([string]$message) {
@@ -24,6 +25,13 @@ if ($Setup) {
     @{ PrinterName = $printer; EncryptedToken = $encrypted } |
         ConvertTo-Json | Set-Content -Path $configPath -Encoding UTF8
     if ($PSCommandPath -ne $agentPath) { Copy-Item -Path $PSCommandPath -Destination $agentPath -Force }
+    $sourceLogo = Join-Path (Split-Path $PSScriptRoot -Parent) "public\logo-pos.png"
+    if (-not (Test-Path $sourceLogo)) { throw "POS logosu bulunamadi: $sourceLogo" }
+    Copy-Item -Path $sourceLogo -Destination $logoPath -Force
+
+    Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" |
+        Where-Object { $_.ProcessId -ne $PID -and $_.CommandLine -and $_.CommandLine.Contains($agentPath) } |
+        ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
 
     $startup = [Environment]::GetFolderPath("Startup")
     $shortcut = (New-Object -ComObject WScript.Shell).CreateShortcut((Join-Path $startup "Lemans Deli Yazici.lnk"))
@@ -48,13 +56,22 @@ $workerId = [uri]::EscapeDataString($env:COMPUTERNAME)
 
 Add-Type -AssemblyName System.Drawing
 
-function Wrap([string]$value, [int]$width = 31) {
+function Wrap([string]$value, [int]$width = 27) {
     $lines = New-Object System.Collections.Generic.List[string]
-    while ($value.Length -gt $width) {
-        $lines.Add($value.Substring(0, $width))
-        $value = $value.Substring($width)
+    $current = ""
+    foreach ($word in ($value -split '\s+')) {
+        if (-not $word) { continue }
+        if ($current -and ($current.Length + 1 + $word.Length -gt $width)) {
+            $lines.Add($current)
+            $current = ""
+        }
+        while ($word.Length -gt $width) {
+            $lines.Add($word.Substring(0, $width))
+            $word = $word.Substring($width)
+        }
+        if ($word) { $current = if ($current) { "$current $word" } else { $word } }
     }
-    $lines.Add($value)
+    if ($current) { $lines.Add($current) }
     return $lines.ToArray()
 }
 
@@ -64,50 +81,93 @@ function Money($value) {
 
 function Print-Job($job) {
     $data = $job.document
-    $lines = New-Object System.Collections.Generic.List[string]
-    $lines.Add("LEMAN'S DELI - KAS")
-    $lines.Add("--------------------------------")
-    $lines.Add("Adisyon: " + $data.receiptNumber)
-    $lines.Add("Tarih: " + (Get-Date -Format "dd.MM.yyyy HH:mm"))
-    foreach ($line in (Wrap ("Siparis: " + $data.orderLabel))) { $lines.Add($line) }
-    $lines.Add("--------------------------------")
+    $rows = New-Object System.Collections.Generic.List[object]
     foreach ($item in $data.items) {
-        foreach ($line in (Wrap (([string]$item.quantity) + " x " + $item.name))) { $lines.Add($line) }
-        $lines.Add("   " + (Money $item.lineTotal))
+        $label = if ([decimal]$item.quantity -gt 1) { "$($item.quantity) x $($item.name)" } else { [string]$item.name }
+        $rows.Add(@{ Lines = @(Wrap $label 20); Price = Money $item.lineTotal })
     }
-    $lines.Add("--------------------------------")
-    $lines.Add("Ara toplam: " + (Money $data.subtotal))
-    if ([decimal]$data.discount -gt 0) { $lines.Add("Indirim: -" + (Money $data.discount)) }
-    $lines.Add("TOPLAM: " + (Money $data.total))
-    foreach ($line in (Wrap ("Durum: " + $data.paymentLabel))) { $lines.Add($line) }
-    $lines.Add("--------------------------------")
-    $lines.Add("MALI DEGERI OLMAYAN ADISYONDUR")
-    $lines.Add("@lemansdeli - Kas")
-
+    $labelLines = @(Wrap ("Sipariş: " + $data.orderLabel) 36)
+    $numberLines = @(Wrap ("Adisyon No: " + $data.receiptNumber) 36)
+    $paymentLines = if ($data.paymentLabel) { @(Wrap ("Durum: " + $data.paymentLabel) 36) } else { @() }
+    $rowHeight = 0.0
+    foreach ($row in $rows) { $rowHeight += 5.0 + (4.2 * ($row.Lines.Count - 1)) }
+    $paperMm = [Math]::Max(100, 104 + ($numberLines.Count + $labelLines.Count - 2 + $paymentLines.Count) * 4.3 + $rowHeight + $(if ([decimal]$data.discount -gt 0) { 5 } else { 0 }))
     $document = New-Object System.Drawing.Printing.PrintDocument
-    $font = New-Object System.Drawing.Font -ArgumentList "Consolas", 8
+    $regular = New-Object System.Drawing.Font -ArgumentList "Arial", 8
+    $bold = New-Object System.Drawing.Font -ArgumentList "Arial", 8, ([System.Drawing.FontStyle]::Bold)
+    $large = New-Object System.Drawing.Font -ArgumentList "Arial", 12, ([System.Drawing.FontStyle]::Bold)
+    $center = New-Object System.Drawing.StringFormat
+    $center.Alignment = [System.Drawing.StringAlignment]::Center
+    $right = New-Object System.Drawing.StringFormat
+    $right.Alignment = [System.Drawing.StringAlignment]::Far
+    $logo = $null
     try {
+        if (Test-Path $logoPath) { $logo = [System.Drawing.Image]::FromFile($logoPath) }
         $document.PrinterSettings.PrinterName = $config.PrinterName
         if (-not $document.PrinterSettings.IsValid) { throw "Yazici kullanilamiyor: $($config.PrinterName)" }
         $document.PrintController = New-Object System.Drawing.Printing.StandardPrintController
-        $height = [Math]::Min(32767, [Math]::Max(300, $lines.Count * 17 + 70))
+        $height = [int][Math]::Ceiling($paperMm / 0.254)
         $document.DefaultPageSettings.PaperSize = New-Object System.Drawing.Printing.PaperSize -ArgumentList "58mm", 228, $height
-        $document.DefaultPageSettings.Margins = New-Object System.Drawing.Printing.Margins -ArgumentList 3, 3, 3, 3
-        $script:printLines = $lines
-        $script:printFont = $font
+        $document.DefaultPageSettings.Margins = New-Object System.Drawing.Printing.Margins -ArgumentList 0, 0, 0, 0
+        $script:receiptData = $data
+        $script:receiptRows = $rows
+        $script:receiptLabelLines = $labelLines
+        $script:receiptNumberLines = $numberLines
+        $script:receiptPaymentLines = $paymentLines
+        $script:receiptRegular = $regular
+        $script:receiptBold = $bold
+        $script:receiptLarge = $large
+        $script:receiptCenter = $center
+        $script:receiptRight = $right
+        $script:receiptLogo = $logo
         $document.add_PrintPage({
             param($sender, $page)
-            $y = 6.0
-            foreach ($line in $script:printLines) {
-                $page.Graphics.DrawString($line, $script:printFont, [System.Drawing.Brushes]::Black, 4.0, $y)
-                $y += 16.0
+            $g = $page.Graphics
+            $g.PageUnit = [System.Drawing.GraphicsUnit]::Millimeter
+            $black = [System.Drawing.Brushes]::Black
+            $y = 2.0
+            if ($script:receiptLogo) { $g.DrawImage($script:receiptLogo, 8.0, $y, 42.0, 28.0); $y += 29.0 }
+            else { $g.DrawString("Leman's Deli", $script:receiptLarge, $black, [System.Drawing.RectangleF]::new(3, $y, 52, 8), $script:receiptCenter); $y += 9.0 }
+            $pen = New-Object System.Drawing.Pen -ArgumentList ([System.Drawing.Color]::Black), 0.18
+            try {
+                $pen.DashStyle = [System.Drawing.Drawing2D.DashStyle]::Dash
+                $g.DrawLine($pen, 3.0, $y, 55.0, $y); $y += 2.0
+                foreach ($line in $script:receiptNumberLines) { $g.DrawString($line, $script:receiptRegular, $black, 3.0, $y); $y += 4.3 }
+                $g.DrawString("Tarih: " + (Get-Date -Format "dd.MM.yyyy"), $script:receiptRegular, $black, 3.0, $y); $y += 4.3
+                $g.DrawString("Saat: " + (Get-Date -Format "HH:mm"), $script:receiptRegular, $black, 3.0, $y); $y += 4.3
+                foreach ($line in $script:receiptLabelLines) { $g.DrawString($line, $script:receiptRegular, $black, 3.0, $y); $y += 4.3 }
+                $y += 1.0; $g.DrawLine($pen, 3.0, $y, 55.0, $y); $y += 2.0
+                foreach ($row in $script:receiptRows) {
+                    $g.DrawString($row.Price, $script:receiptBold, $black, [System.Drawing.RectangleF]::new(34, $y, 21, 5), $script:receiptRight)
+                    foreach ($line in $row.Lines) { $g.DrawString($line, $script:receiptBold, $black, 3.0, $y); $y += 4.2 }
+                    $y += 0.8
+                }
+                $g.DrawLine($pen, 3.0, $y, 55.0, $y); $y += 2.0
+                $g.DrawString("Ara toplam", $script:receiptRegular, $black, 3.0, $y)
+                $g.DrawString((Money $script:receiptData.subtotal), $script:receiptRegular, $black, [System.Drawing.RectangleF]::new(35, $y, 20, 5), $script:receiptRight); $y += 4.5
+                if ([decimal]$script:receiptData.discount -gt 0) {
+                    $g.DrawString(("İndirim " + $script:receiptData.discountLabel), $script:receiptRegular, $black, 3.0, $y)
+                    $g.DrawString(("-" + (Money $script:receiptData.discount)), $script:receiptRegular, $black, [System.Drawing.RectangleF]::new(35, $y, 20, 5), $script:receiptRight); $y += 4.5
+                }
+                $g.DrawString("TOPLAM", $script:receiptLarge, $black, 3.0, $y)
+                $g.DrawString((Money $script:receiptData.total), $script:receiptLarge, $black, [System.Drawing.RectangleF]::new(31, $y, 24, 7), $script:receiptRight); $y += 8.0
+                foreach ($line in $script:receiptPaymentLines) { $g.DrawString($line, $script:receiptBold, $black, 3.0, $y); $y += 4.3 }
+                $y += 1.0; $g.DrawLine($pen, 3.0, $y, 55.0, $y); $y += 3.0
+                $g.DrawString("BU BELGE MALİ DEĞERİ OLMAYAN", $script:receiptBold, $black, [System.Drawing.RectangleF]::new(3, $y, 52, 5), $script:receiptCenter); $y += 4.3
+                $g.DrawString("BİLGİLENDİRME AMAÇLI ADİSYONDUR.", $script:receiptBold, $black, [System.Drawing.RectangleF]::new(3, $y, 52, 5), $script:receiptCenter); $y += 7.0
+                $g.DrawString("Teşekkür ederiz.", $script:receiptRegular, $black, [System.Drawing.RectangleF]::new(3, $y, 52, 5), $script:receiptCenter); $y += 4.3
+                $g.DrawString("@lemansdeli · Kaş", $script:receiptRegular, $black, [System.Drawing.RectangleF]::new(3, $y, 52, 5), $script:receiptCenter)
+            } finally {
+                $pen.Dispose()
             }
             $page.HasMorePages = $false
         })
         $document.Print()
     } finally {
         $document.Dispose()
-        $font.Dispose()
+        $regular.Dispose(); $bold.Dispose(); $large.Dispose()
+        $center.Dispose(); $right.Dispose()
+        if ($logo) { $logo.Dispose() }
     }
 }
 
