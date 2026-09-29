@@ -20,12 +20,12 @@ export async function staffForPrint(request: NextRequest) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!url || !key) return { userId: null, reason: "auth_config_missing" } as const;
-  // Use the same per-request Supabase auth flow as the existing LUCA POS endpoint.
+  // GoTrue's getUser() without an argument reads its own session storage.
+  // Server requests do not have that storage, so pass the bearer token explicitly.
   const requestSupabase = createClient(url, key, {
-    global: { headers: { Authorization: authorization } },
     auth: { persistSession: false, autoRefreshToken: false },
   });
-  const { data, error } = await requestSupabase.auth.getUser();
+  const { data, error } = await requestSupabase.auth.getUser(authorization.slice(7));
   if (error || !data.user) {
     console.error("POS print auth rejected:", error?.code || "no_user", error?.status || "");
     return { userId: null, reason: "token_invalid" } as const;
