@@ -974,7 +974,7 @@ await loadIncomingOrdersOnly();
   }
 
   async function closeInvoiceMessage(order: IncomingOrder) {
-    if (!['trendyol', 'yemeksepeti'].includes(String(order.source))) return "";
+    if (order.source !== "trendyol") return "";
     const invoice = await requestLucaAutoInvoice(order.id);
     if (!invoice.ok) {
       alert(`Sipariş kapandı fakat fatura kesilemedi. Siparişler ekranında “Fatura başarısız” olarak görünecek.\n\n${invoice.error}`);
