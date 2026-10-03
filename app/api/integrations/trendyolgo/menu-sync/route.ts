@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "../../../../../lib/supabaseAdmin";
+import { requireIntegrationUser } from "../../../../../lib/integrations/requireUser";
 import {
   getTrendyolGoSellerId,
   trendyolGoRequest,
@@ -90,9 +91,20 @@ async function buildDiff() {
     if (id !== undefined && id !== null) byId.set(String(id), p);
   }
 
-  const priceChanges: any[] = [];
-  const statusChanges: any[] = [];
-  const skipped: any[] = [];
+  const priceChanges: Array<{
+    productId: string;
+    name: string;
+    localPrice: number;
+    trendyolPrice: number;
+  }> = [];
+  const statusChanges: Array<{
+    productId: string;
+    name: string;
+    localActive: boolean;
+    trendyolActive: boolean;
+    trendyolStatus: string | null;
+  }> = [];
+  const skipped: Array<{ productId: string; name: string; reason: string }> = [];
 
   for (const mapping of mappings) {
     const local = menuItems.find((x) => x.id === mapping.menu_item_id);
@@ -140,8 +152,11 @@ async function buildDiff() {
   return { sellerId, mappings, tgoProducts, priceChanges, statusChanges, skipped };
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    if (!(await requireIntegrationUser(request))) {
+      return NextResponse.json({ ok: false, error: "Personel oturumu bulunamadı." }, { status: 401 });
+    }
     const diff = await buildDiff();
 
     return NextResponse.json({
@@ -174,6 +189,9 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
+    if (!(await requireIntegrationUser(request))) {
+      return NextResponse.json({ ok: false, error: "Personel oturumu bulunamadı." }, { status: 401 });
+    }
     const body = await request.json().catch(() => ({}));
 
     if (body?.confirm !== true) {

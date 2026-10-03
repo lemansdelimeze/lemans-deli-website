@@ -36,8 +36,14 @@ export default function TrendyolGoMappingPage() {
     setLoading(true);
     setErrorText("");
 
+    const { data: { session } } = await supabase.auth.getSession();
     const [pRes, menuRes, mapRes] = await Promise.all([
-      fetch("/api/integrations/trendyolgo/products", { cache: "no-store" }),
+      fetch("/api/integrations/trendyolgo/products", {
+        cache: "no-store",
+        headers: session?.access_token
+          ? { Authorization: `Bearer ${session.access_token}` }
+          : {},
+      }),
       supabase
         .from("menu_items")
         .select("id,name,name_tr,category,active")

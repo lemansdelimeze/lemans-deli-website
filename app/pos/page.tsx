@@ -868,8 +868,11 @@ localStorage.setItem(
     if (showMessage) setChannelMessage("Trendyol Go siparişleri sorgulanıyor...");
 
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) throw new Error("POS oturumu sona ermiş. Yeniden giriş yapın.");
       const response = await fetch("/api/integrations/trendyolgo/sync", {
         method: "POST",
+        headers: { Authorization: `Bearer ${session.access_token}` },
       });
       const data = (await response.json()) as {
         ok?: boolean;

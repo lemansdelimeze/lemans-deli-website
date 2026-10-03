@@ -1,6 +1,7 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
 import { supabaseAdmin } from "../../../../../lib/supabaseAdmin";
+import { requireIntegrationUser } from "../../../../../lib/integrations/requireUser";
 import {
   getTrendyolGoSellerId,
   trendyolGoRequest,
@@ -82,8 +83,11 @@ async function markQueue(
   if (error) throw error;
 }
 
-export async function POST() {
+export async function POST(request: NextRequest) {
   try {
+    if (!(await requireIntegrationUser(request))) {
+      return NextResponse.json({ ok: false, error: "Personel oturumu bulunamadı." }, { status: 401 });
+    }
     /*
      * SADECE mapping'i olan ürünlerin "sync" işlerini al.
      *

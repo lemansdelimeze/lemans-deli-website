@@ -1,5 +1,6 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "../../../../../lib/supabaseAdmin";
+import { requireIntegrationUser } from "../../../../../lib/integrations/requireUser";
 import {
   getTrendyolGoSellerId,
   trendyolGoRequest,
@@ -379,8 +380,12 @@ async function findMenuItemId(productId: number): Promise<number | null> {
   return data?.menu_item_id ?? null;
 }
 
-export async function POST() {
+export async function POST(request: NextRequest) {
   try {
+    if (!(await requireIntegrationUser(request))) {
+      return NextResponse.json({ ok: false, error: "Personel oturumu bulunamadı." }, { status: 401 });
+    }
+
     const sellerId = getTrendyolGoSellerId();
 
     const params = new URLSearchParams({
@@ -392,12 +397,23 @@ export async function POST() {
       `/integrator/order/meal/suppliers/${sellerId}/packages?${params.toString()}`
     );
 
+    const packages = [...(response.content ?? [])];
+    const maxPages = 100;
+    const totalPages = Math.max(1, Number(response.totalPages || 1));
+    for (let page = 1; page < Math.min(totalPages, maxPages); page += 1) {
+      const pageParams = new URLSearchParams({ page: String(page), size: "50" });
+      const nextPage = await trendyolGoRequest<TgPackageResponse>(
+        `/integrator/order/meal/suppliers/${sellerId}/packages?${pageParams.toString()}`
+      );
+      packages.push(...(nextPage.content ?? []));
+    }
+
     let imported = 0;
     let updated = 0;
     let unmatched = 0;
     const unmatchedProducts = new Map<string, string>();
 
-    for (const pkg of response.content ?? []) {
+    for (const pkg of packages) {
       const externalOrderId = pkg.orderNumber || pkg.orderId || pkg.id;
 
       const invoice = extractInvoiceData(pkg);
@@ -590,7 +606,8 @@ export async function POST() {
 
     return NextResponse.json({
       ok: true,
-      fetched: response.content?.length ?? 0,
+      fetched: packages.length,
+      truncated: totalPages > maxPages,
       imported,
       updated,
       unmatched,

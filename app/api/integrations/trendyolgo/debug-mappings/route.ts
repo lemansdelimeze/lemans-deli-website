@@ -1,8 +1,12 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "../../../../../lib/supabaseAdmin";
+import { requireIntegrationUser } from "../../../../../lib/integrations/requireUser";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    if (!(await requireIntegrationUser(request))) {
+      return NextResponse.json({ ok: false, error: "Personel oturumu bulunamadı." }, { status: 401 });
+    }
     const { data, error, count } = await supabaseAdmin
       .from("integration_product_mappings")
       .select(

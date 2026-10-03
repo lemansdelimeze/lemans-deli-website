@@ -316,10 +316,14 @@ export default function TvMenuAdminPage() {
 
   async function triggerTrendyolGoSync() {
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) return;
+      const authorization = { Authorization: `Bearer ${session.access_token}` };
       const response = await fetch(
         "/api/integrations/trendyolgo/process-queue",
         {
           method: "POST",
+          headers: authorization,
           cache: "no-store",
         }
       );
@@ -331,6 +335,20 @@ export default function TvMenuAdminPage() {
           "Trendyol Go senkronizasyonu tetiklenemedi:",
           response.status,
           body
+        );
+      }
+
+      const catalogResponse = await fetch("/api/integrations/yemeksepeti/menu-sync", {
+        method: "POST",
+        headers: { ...authorization, "Content-Type": "application/json" },
+        body: JSON.stringify({ confirm: true }),
+        cache: "no-store",
+      });
+      if (!catalogResponse.ok) {
+        console.error(
+          "Yemeksepeti katalog aktarımı başarısız:",
+          catalogResponse.status,
+          await catalogResponse.text()
         );
       }
     } catch (error) {
@@ -637,6 +655,8 @@ export default function TvMenuAdminPage() {
         )
       );
 
+      await triggerTrendyolGoSync();
+
       if (oldUrl) {
         const oldPath = getStoragePathFromPublicUrl(oldUrl);
 
@@ -688,6 +708,7 @@ export default function TvMenuAdminPage() {
       await supabase.storage.from("menu-images").remove([path]);
     }
 
+    await triggerTrendyolGoSync();
     setUploadingId(null);
   }
 
@@ -717,6 +738,8 @@ export default function TvMenuAdminPage() {
     setItems((current) =>
       current.filter((currentItem) => currentItem.id !== item.id)
     );
+
+    await triggerTrendyolGoSync();
 
     setOpenItemId(null);
   }

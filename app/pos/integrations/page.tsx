@@ -78,6 +78,8 @@ export default function IntegrationsPage() {
   const [active, setActive] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [menuSyncing, setMenuSyncing] = useState(false);
+  const [menuSyncMessage, setMenuSyncMessage] = useState("");
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -236,6 +238,41 @@ export default function IntegrationsPage() {
     }
 
     await loadData();
+  }
+
+  async function syncSelectedMenu() {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) return alert("POS oturumu sona ermiş. Yeniden giriş yapın.");
+    setMenuSyncing(true);
+    setMenuSyncMessage("");
+    const headers = { Authorization: `Bearer ${session.access_token}` };
+    const endpoint = channel === "yemeksepeti"
+      ? "/api/integrations/yemeksepeti/menu-sync"
+      : "/api/integrations/trendyolgo/menu-sync";
+    try {
+      const previewResponse = await fetch(endpoint, { headers, cache: "no-store" });
+      const preview = await previewResponse.json();
+      if (!previewResponse.ok || !preview.ok) throw new Error(preview.error || "Menü kontrol edilemedi.");
+      const summary = channel === "yemeksepeti"
+        ? `${preview.productCount} ürün ve ${preview.categoryCount} kategori tam katalog olarak gönderilecek.`
+        : `${preview.summary.priceChanges} fiyat ve ${preview.summary.statusChanges} açık/kapalı güncellemesi gönderilecek.`;
+      if (!window.confirm(`${CHANNEL_LABELS[channel]} menü senkronu\n\n${summary}\n\nDevam edilsin mi?`)) return;
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({ confirm: true }),
+        cache: "no-store",
+      });
+      const result = await response.json();
+      if (!response.ok || !result.ok) throw new Error(result.error?.message || result.error || "Senkron gönderilemedi.");
+      setMenuSyncMessage(channel === "yemeksepeti"
+        ? `Yemeksepeti kataloğu gönderildi. Ürün: ${result.productCount}, aktarım: ${result.catalogImportId || "kabul edildi"}.`
+        : `Trendyol güncellendi. Fiyat: ${result.summary.pricesRequested}, durum: ${result.summary.statusesRequested}.`);
+    } catch (error) {
+      setMenuSyncMessage(error instanceof Error ? error.message : "Menü senkronu başarısız.");
+    } finally {
+      setMenuSyncing(false);
+    }
   }
 
   return (
@@ -403,6 +440,24 @@ export default function IntegrationsPage() {
             </aside>
 
             <section className="space-y-5">
+              <section className="rounded-3xl border border-[#6e1f12]/10 bg-white p-5">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <h2 className="text-xl font-bold text-[#6e1f12]">Menü senkronizasyonu</h2>
+                    <p className="mt-1 text-sm opacity-60">Fiyat ve ürünün açık/kapalı durumu seçilen kanala gönderilir.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void syncSelectedMenu()}
+                    disabled={menuSyncing}
+                    className="rounded-xl bg-[#6e1f12] px-5 py-3 font-bold text-white disabled:opacity-40"
+                  >
+                    {menuSyncing ? "Senkron gönderiliyor…" : `${CHANNEL_LABELS[channel]} menüsünü gönder`}
+                  </button>
+                </div>
+                {menuSyncMessage && <p className="mt-3 rounded-xl bg-[#f4efe5] p-3 text-sm">{menuSyncMessage}</p>}
+              </section>
+
               <form
                 onSubmit={addMapping}
                 className="rounded-3xl border border-[#6e1f12]/10 bg-white p-5"

@@ -1,12 +1,16 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { requireIntegrationUser } from "../../../../../lib/integrations/requireUser";
 
 import {
   getTrendyolGoSellerId,
   trendyolGoRequest,
 } from "../../../../../lib/integrations/trendyolgo/client";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    if (!(await requireIntegrationUser(request))) {
+      return NextResponse.json({ ok: false, error: "Personel oturumu bulunamadı." }, { status: 401 });
+    }
     const sellerId = getTrendyolGoSellerId();
 
     const params = new URLSearchParams({
