@@ -367,6 +367,12 @@ export default function PosInvoicesPage() {
               Yenile
             </button>
             <a
+              href="/pos/invoices/meal-cards"
+              className="rounded-xl border border-[#6e1f12]/20 bg-white px-4 py-2 text-sm font-semibold text-[#6e1f12]"
+            >
+              Yemek Kartı Faturası
+            </a>
+            <a
               href="/pos/orders"
               className="rounded-xl border bg-white px-4 py-2 text-sm font-semibold"
             >
