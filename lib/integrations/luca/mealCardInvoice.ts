@@ -133,8 +133,8 @@ export function buildMealCardInvoiceXml(input: MealCardInvoiceInput) {
     "xmlns:ein=\"http://schemas.datacontract.org/2004/07/EInvoice.Service.Model\" " +
     "xmlns:arr=\"http://schemas.microsoft.com/2003/10/Serialization/Arrays\">" +
     "<soapenv:Header/><soapenv:Body><tem:SendInvoice><tem:request>" +
-    "<ein:Invoices>" + invoice + "</ein:Invoices>" +
     "<ein:CompanyTaxCode>" + xml(companyTaxCode) + "</ein:CompanyTaxCode>" +
+    "<ein:Invoices>" + invoice + "</ein:Invoices>" +
     "</tem:request></tem:SendInvoice></soapenv:Body></soapenv:Envelope>";
 
   return { xml: xmlBody, externalCode, serviceUrl };
