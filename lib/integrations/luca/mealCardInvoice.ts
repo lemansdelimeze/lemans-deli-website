@@ -78,8 +78,9 @@ export function buildMealCardInvoiceXml(input: MealCardInvoiceInput) {
     "<ein:Product>" +
       "<ein:ExternalProductCode>YIYECEK-BEDELI</ein:ExternalProductCode>" +
       "<ein:MeasureUnit>NIU</ein:MeasureUnit>" +
-      "<ein:ProductCode>YIYECEK-BEDELI</ein:ProductCode>" +
       "<ein:ProductName>Yemek Bedeli</ein:ProductName>" +
+      "<ein:ProductCode>YIYECEK-BEDELI</ein:ProductCode>" +
+      "<ein:ReceiverProductCode>YIYECEK-BEDELI</ein:ReceiverProductCode>" +
       "<ein:UnitPrice>" + net + "</ein:UnitPrice>" +
     "</ein:Product>" +
     "<ein:Quantity>1.00</ein:Quantity>" +
