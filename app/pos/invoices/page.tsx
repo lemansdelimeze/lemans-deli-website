@@ -10,6 +10,9 @@ type Order = {
   total: number;
   status: string;
   order_type: string;
+  customer_name: string | null;
+  delivery_address: string | null;
+  external_payload: unknown;
   created_at: string;
   closed_at: string | null;
   invoice_requested: boolean;
@@ -79,6 +82,22 @@ function emptyDraft(): Draft {
     address: "",
     city: "",
     district: "",
+  };
+}
+
+function marketplaceAddressParts(payload: unknown) {
+  if (!payload || typeof payload !== "object") {
+    return { city: "", district: "" };
+  }
+
+  const delivery = (payload as {
+    delivery?: { address?: { city?: unknown; district?: unknown } };
+  }).delivery;
+  const address = delivery?.address;
+  return {
+    city: typeof address?.city === "string" ? address.city.trim() : "",
+    district:
+      typeof address?.district === "string" ? address.district.trim() : "",
   };
 }
 
@@ -178,7 +197,7 @@ export default function PosInvoicesPage() {
     const { data, error } = await supabase
       .from("pos_orders")
       .select(
-        "id,receipt_number,total,status,order_type,created_at,closed_at,invoice_requested,invoice_type,invoice_status,invoice_uuid,invoice_number,invoice_customer_type,invoice_customer_name,invoice_tax_number,invoice_tax_office,invoice_email,invoice_address,invoice_city,invoice_district,invoice_error"
+        "id,receipt_number,total,status,order_type,customer_name,delivery_address,external_payload,created_at,closed_at,invoice_requested,invoice_type,invoice_status,invoice_uuid,invoice_number,invoice_customer_type,invoice_customer_name,invoice_tax_number,invoice_tax_office,invoice_email,invoice_address,invoice_city,invoice_district,invoice_error"
       )
       .eq("status", "closed")
       .order("closed_at", { ascending: false })
@@ -217,16 +236,19 @@ export default function PosInvoicesPage() {
 
   function openDraft(order: Order) {
     setSelectedOrder(order);
+    const marketplaceAddress = marketplaceAddressParts(order.external_payload);
 
     setDraft({
       customerType: order.invoice_customer_type ?? "individual",
-      customerName: order.invoice_customer_name ?? "",
+      customerName:
+        order.invoice_customer_name?.trim() || order.customer_name?.trim() || "",
       taxNumber: order.invoice_tax_number ?? "",
       taxOffice: order.invoice_tax_office ?? "",
       email: order.invoice_email ?? "",
-      address: order.invoice_address ?? "",
-      city: order.invoice_city ?? "",
-      district: order.invoice_district ?? "",
+      address:
+        order.invoice_address?.trim() || order.delivery_address?.trim() || "",
+      city: order.invoice_city?.trim() || marketplaceAddress.city,
+      district: order.invoice_district?.trim() || marketplaceAddress.district,
     });
   }
 
