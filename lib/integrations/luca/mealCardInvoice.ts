@@ -62,7 +62,8 @@ export function buildMealCardInvoiceXml(input: MealCardInvoiceInput) {
   const externalCode = ("LD-MC-" + input.provider + "-" + input.requestNo + "-" + input.invoiceDate.replace(/-/g, ""))
     .replace(/[^A-Za-z0-9-]/g, "-")
     .slice(0, 64);
-  const note = "Ticket Restaurant yemek bedeli - Fatura Talep No: " + input.requestNo +
+  const providerName = input.provider === "edenred" ? "Edenred" : input.provider === "setcard" ? "Setcard" : "Pluxee";
+  const note = providerName + " yemek bedeli - Fatura Talep No: " + input.requestNo +
     (input.memberNo ? " - Üye No: " + input.memberNo : "");
   const net = amount(input.netCents);
   const vat = amount(input.vatCents);
@@ -164,7 +165,7 @@ export async function sendMealCardInvoice(input: MealCardInvoiceInput) {
   const result = raw.match(/<[^>]*:?Result[^>]*>([\s\S]*?)<\/[^>]*:?Result>/i)?.[1]?.trim() || "";
   const errorMessage = raw.match(/<[^>]*:?ErrorMessage[^>]*>([\s\S]*?)<\/[^>]*:?ErrorMessage>/i)?.[1]?.trim() || "";
   const invoiceNumber = raw.match(/<[^>]*:?(?:InvoiceNumber|InvoiceNo)[^>]*>([\s\S]*?)<\/[^>]*:?(?:InvoiceNumber|InvoiceNo)>/i)?.[1]?.trim() || "";
-  const invoiceUuid = raw.match(/<[^>]*:?(?:ETTN|Ettn)[^>]*>([\s\S]*?)<\/[^>]*:?(?:ETTN|Ettn)>/i)?.[1]?.trim() || "";
+  const invoiceUuid = raw.match(/<[^>]*:?(?:ETTN|InvoiceUUID|UUID)[^>]*>([\s\S]*?)<\/[^>]*:?(?:ETTN|InvoiceUUID|UUID)>/i)?.[1]?.trim() || "";
 
   if (!response.ok || result.toLowerCase() !== "success") {
     throw new MealCardInvoiceSendError(

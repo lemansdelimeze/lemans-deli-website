@@ -51,16 +51,6 @@ const LABELS: Record<Provider, string> = {
   setcard: "Setcard",
   pluxee: "Pluxee",
 };
-const EMPTY_PROFILE: Profile = {
-  receiverName: "",
-  receiverTaxCode: "",
-  receiverAlias: "",
-  receiverAddress: "",
-  receiverCity: "",
-  receiverDistrict: "",
-  receiverTaxOffice: "",
-  memberNo: "",
-};
 const DEFAULT_PROFILES: Record<Provider, Profile> = {
   edenred: {
     receiverName: "EDENRED KURUMSAL ÇÖZÜMLER A.Ş.",
@@ -82,7 +72,16 @@ const DEFAULT_PROFILES: Record<Provider, Profile> = {
     receiverTaxOffice: "Boğaziçi Kurumlar",
     memberNo: "",
   },
-  pluxee: EMPTY_PROFILE,
+  pluxee: {
+    receiverName: "PLUXEE ÇALIŞAN DENEYİMİ DANIŞMANLIK VE PAZARLAMA HİZMETLERİ A.Ş.",
+    receiverTaxCode: "7720023795",
+    receiverAlias: "urn:mail:uyepk@pluxeegroup.com",
+    receiverAddress: "Aydınevler Mah. İsmet İnönü Cad. Küçükyalı Ofis Park A Blok No:20/1",
+    receiverCity: "İstanbul",
+    receiverDistrict: "Maltepe",
+    receiverTaxOffice: "Boğaziçi Kurumlar",
+    memberNo: "",
+  },
 };
 
 function todayIstanbul() {
