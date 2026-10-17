@@ -99,7 +99,7 @@ export async function POST(request: NextRequest) {
 
   const { data: order, error: orderError } = await supabaseAdmin
     .from("pos_orders")
-    .select("id,receipt_number,customer_name,customer_phone,delivery_address,total,status,source,payment_method,external_payload,invoice_status,invoice_customer_name,invoice_address,invoice_tax_number")
+    .select("id,receipt_number,customer_name,customer_phone,delivery_address,total,status,source,payment_method,external_payload,invoice_status,invoice_customer_name,invoice_address,invoice_tax_number,invoice_tax_office")
     .eq("id", body.orderId)
     .single();
 

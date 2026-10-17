@@ -138,7 +138,7 @@ export async function POST(request: NextRequest) {
 
   const { data: order, error } = await supabaseAdmin
     .from("pos_orders")
-    .select("id,receipt_number,customer_name,customer_phone,delivery_address,total,status,source,payment_method,external_payload,invoice_status")
+    .select("id,receipt_number,customer_name,customer_phone,delivery_address,total,status,source,payment_method,external_payload,invoice_status,invoice_tax_number,invoice_tax_office")
     .eq("id", body.orderId)
     .single();
   if (error || !order) return NextResponse.json({ ok: false, error: "Sipariş bulunamadı." }, { status: 404 });

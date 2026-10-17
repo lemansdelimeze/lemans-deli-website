@@ -11,6 +11,8 @@ type ClosedOrder = {
   customer_phone: string | null;
   delivery_address: string | null;
   invoice_tax_number?: string | null;
+  invoice_tax_office?: string | null;
+  source?: string | null;
   total: number | string | null;
 };
 
@@ -111,8 +113,8 @@ function externalCode(order: ClosedOrder) {
 }
 
 function isBeverage(name: string) {
-  const value = name.toLocaleLowerCase("tr-TR");
-  return ["ayran", "cola", "kola", "ice tea", "lipton", "fanta", "sprite", "soda", "su", "kahve", "çay", "limonata", "meyve suyu", "red bull"].some((term) => value.includes(term));
+  // Match complete drink words; substring matching "su" misclassifies "Sucuklu".
+  return /(^|[^\p{L}\p{N}])(?:ayran|cola|kola|ice\s*tea|lipton|fanta|sprite|soda|su|suyu|kahve|çay|limonata|meyve\s+suyu|red\s*bull|americano|latte|espresso|adaçayı)(?=$|[^\p{L}\p{N}])/iu.test(name.trim());
 }
 
 function groupedInvoiceLines(lines: InvoiceLine[]) {
@@ -179,7 +181,13 @@ export function buildLucaArchiveInvoiceDraft(
     : grossTotal * (1 + settings.vatRate / 100);
   const code = externalCode(order);
   const receiverName = order.customer_name?.trim() || settings.defaultReceiverName;
-  const receiverTaxCode = order.invoice_tax_number?.trim() || settings.defaultReceiverTaxCode;
+  const isMarketplaceOrder = order.source === "yemeksepeti" || order.source === "trendyol";
+  const receiverTaxCode = isMarketplaceOrder
+    ? "11111111111"
+    : order.invoice_tax_number?.trim() || settings.defaultReceiverTaxCode;
+  const receiverTaxOffice = isMarketplaceOrder
+    ? "Kaş"
+    : order.invoice_tax_office?.trim() || "";
   const receiverAddress =
     order.delivery_address?.trim() || settings.defaultReceiverAddress;
 
@@ -241,7 +249,10 @@ export function buildLucaArchiveInvoiceDraft(
               <ein:ReceiverTaxCode>${escapeXml(receiverTaxCode)}</ein:ReceiverTaxCode>
               <ein:SendingType>KAGIT</ein:SendingType>
             </ein:Receiver>
-            <ein:ReceiverBranchAddress><ein:BoulevardAveneuStreetName>${escapeXml(receiverAddress)}</ein:BoulevardAveneuStreetName></ein:ReceiverBranchAddress>
+            <ein:ReceiverBranchAddress>
+              <ein:BoulevardAveneuStreetName>${escapeXml(receiverAddress)}</ein:BoulevardAveneuStreetName>
+              <ein:TaxOfficeName>${escapeXml(receiverTaxOffice)}</ein:TaxOfficeName>
+            </ein:ReceiverBranchAddress>
             <ein:SendMailAutomatically>false</ein:SendMailAutomatically>
             <ein:TotalDiscountAmount>0</ein:TotalDiscountAmount>
             <ein:TotalLineExtensionAmount>${money(netTotal)}</ein:TotalLineExtensionAmount>
