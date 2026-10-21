@@ -343,7 +343,7 @@ const [trendyolAutoSync, setTrendyolAutoSync] = useState(true);  const [newOrder
       if (document.visibilityState === "visible") {
         void loadIncomingOrdersOnly();
       }
-    }, 8000);
+    }, 30_000);
 
     return () => window.clearInterval(timer);
   }, [loadIncomingOrdersOnly, loggedIn]);
