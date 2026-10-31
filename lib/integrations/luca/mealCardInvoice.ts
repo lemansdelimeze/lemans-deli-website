@@ -116,6 +116,7 @@ export function buildMealCardInvoiceXml(input: MealCardInvoiceInput) {
       "</ein:Address>" +
       "<ein:ReceiverName>" + xml(input.receiverName) + "</ein:ReceiverName>" +
       "<ein:ReceiverTaxCode>" + xml(input.receiverTaxCode) + "</ein:ReceiverTaxCode>" +
+      "<ein:RecipientType>NONE</ein:RecipientType>" +
       "<ein:SendingType>NONE</ein:SendingType>" +
     "</ein:Receiver>" +
     "<ein:ReceiverBranchAddress><ein:BoulevardAveneuStreetName>" + xml(input.receiverAddress) +
