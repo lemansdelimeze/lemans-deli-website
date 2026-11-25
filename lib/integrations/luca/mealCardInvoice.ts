@@ -75,7 +75,6 @@ export function buildMealCardInvoiceXml(input: MealCardInvoiceInput) {
     "<ein:DiscountAmount>0.00</ein:DiscountAmount>" +
     "<ein:DiscountRate>0</ein:DiscountRate>" +
     "<ein:LineExtensionAmount>" + net + "</ein:LineExtensionAmount>" +
-    "<ein:Note>" + xml(note) + "</ein:Note>" +
     "<ein:Product>" +
       "<ein:ExternalProductCode>YIYECEK-BEDELI</ein:ExternalProductCode>" +
       "<ein:MeasureUnit>NIU</ein:MeasureUnit>" +
@@ -90,6 +89,7 @@ export function buildMealCardInvoiceXml(input: MealCardInvoiceInput) {
     "</ein:InvoiceDetail>";
 
   const invoice = "<ein:Invoice>" +
+    "<ein:CurrencyCode>TRY</ein:CurrencyCode>" +
     "<ein:CompanyBranchAddress>" +
       "<ein:BoulevardAveneuStreetName>" + xml(sender.address) + "</ein:BoulevardAveneuStreetName>" +
       "<ein:CityCode>" + xml(sender.cityCode) + "</ein:CityCode>" +
@@ -99,30 +99,25 @@ export function buildMealCardInvoiceXml(input: MealCardInvoiceInput) {
       "<ein:TownCode>0</ein:TownCode>" +
       "<ein:TownName>" + xml(sender.district) + "</ein:TownName>" +
     "</ein:CompanyBranchAddress>" +
-    "<ein:CrossRate>0</ein:CrossRate>" +
-    "<ein:CurrencyCode>TRY</ein:CurrencyCode>" +
     "<ein:ExternalInvoiceCode>" + xml(externalCode) + "</ein:ExternalInvoiceCode>" +
     "<ein:InvoiceDate>" + xml(input.invoiceDate) + "</ein:InvoiceDate>" +
     "<ein:InvoiceDetails>" + detail + "</ein:InvoiceDetails>" +
     "<ein:InvoiceType>SATIS</ein:InvoiceType>" +
-    "<ein:ScenarioType>TEMELFATURA</ein:ScenarioType>" +
     "<ein:Notes><arr:string>" + xml(note) + "</arr:string></ein:Notes>" +
     "<ein:Receiver>" +
-      "<ein:Address>" +
-        "<ein:BoulevardAveneuStreetName>" + xml(input.receiverAddress) + "</ein:BoulevardAveneuStreetName>" +
-        "<ein:CityName>" + xml(input.receiverCity) + "</ein:CityName>" +
-        "<ein:TownName>" + xml(input.receiverDistrict) + "</ein:TownName>" +
-        "<ein:TaxOfficeName>" + xml(input.receiverTaxOffice) + "</ein:TaxOfficeName>" +
-      "</ein:Address>" +
       "<ein:ReceiverName>" + xml(input.receiverName) + "</ein:ReceiverName>" +
       "<ein:ReceiverTaxCode>" + xml(input.receiverTaxCode) + "</ein:ReceiverTaxCode>" +
       "<ein:RecipientType>NONE</ein:RecipientType>" +
       "<ein:SendingType>NONE</ein:SendingType>" +
     "</ein:Receiver>" +
-    "<ein:ReceiverBranchAddress><ein:BoulevardAveneuStreetName>" + xml(input.receiverAddress) +
-      "</ein:BoulevardAveneuStreetName></ein:ReceiverBranchAddress>" +
+    "<ein:ReceiverBranchAddress>" +
+      "<ein:BoulevardAveneuStreetName>" + xml(input.receiverAddress) + "</ein:BoulevardAveneuStreetName>" +
+      "<ein:CityName>" + xml(input.receiverCity) + "</ein:CityName>" +
+      "<ein:TaxOfficeName>" + xml(input.receiverTaxOffice) + "</ein:TaxOfficeName>" +
+      "<ein:TownName>" + xml(input.receiverDistrict) + "</ein:TownName>" +
+    "</ein:ReceiverBranchAddress>" +
     "<ein:ReceiverInboxTag>" + xml(input.receiverInboxTag) + "</ein:ReceiverInboxTag>" +
-    "<ein:SendMailAutomatically>false</ein:SendMailAutomatically>" +
+    "<ein:ScenarioType>TEMELFATURA</ein:ScenarioType>" +
     "<ein:TotalDiscountAmount>0.00</ein:TotalDiscountAmount>" +
     "<ein:TotalLineExtensionAmount>" + net + "</ein:TotalLineExtensionAmount>" +
     "<ein:TotalPayableAmount>" + gross + "</ein:TotalPayableAmount>" +

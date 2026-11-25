@@ -5,9 +5,27 @@ import {
   trendyolGoRequest,
 } from "../../../../../lib/integrations/trendyolgo/client";
 
-type TgLine = { productId: number; name: string };
-type TgPackage = { lines?: TgLine[] };
-type TgResponse = { content?: TgPackage[] };
+type TrendyolProduct = {
+  id?: number | string;
+  productId?: number | string;
+  name?: string;
+  productName?: string;
+  title?: string;
+};
+type TrendyolProductsResponse = {
+  content?: TrendyolProduct[];
+  products?: TrendyolProduct[];
+  items?: TrendyolProduct[];
+};
+
+const STORE_ID = Number(process.env.TRENDYOL_GO_STORE_ID ?? "468005");
+
+function productsFrom(data: TrendyolProductsResponse) {
+  if (Array.isArray(data.content)) return data.content;
+  if (Array.isArray(data.products)) return data.products;
+  if (Array.isArray(data.items)) return data.items;
+  return [];
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -15,18 +33,16 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ ok: false, error: "Personel oturumu bulunamadı." }, { status: 401 });
     }
     const sellerId = getTrendyolGoSellerId();
-    const params = new URLSearchParams({ page: "0", size: "50" });
-
-    const data = await trendyolGoRequest<TgResponse>(
-      `/integrator/order/meal/suppliers/${sellerId}/packages?${params.toString()}`
+    const data = await trendyolGoRequest<TrendyolProductsResponse>(
+      `/integrator/product/meal/suppliers/${sellerId}/stores/${STORE_ID}/products`
     );
 
     const products = new Map<string, string>();
-
-    for (const pkg of data.content ?? []) {
-      for (const line of pkg.lines ?? []) {
-        products.set(String(line.productId), line.name);
-      }
+    for (const product of productsFrom(data)) {
+      const id = product.productId ?? product.id;
+      if (id === undefined || id === null) continue;
+      const name = product.name || product.productName || product.title || `Trendyol ürünü ${id}`;
+      products.set(String(id), name);
     }
 
     return NextResponse.json({

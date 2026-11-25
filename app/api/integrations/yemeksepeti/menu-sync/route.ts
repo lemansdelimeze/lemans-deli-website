@@ -19,6 +19,8 @@ type MenuRow = {
 
 type CatalogItem = Record<string, unknown>;
 
+const EXCLUDED_CATEGORIES = new Set(["sarkuteri", "peynir"]);
+
 let accessTokenCache: { token: string; expiresAt: number } | null = null;
 
 function requiredEnv(name: string) {
@@ -76,8 +78,10 @@ async function loadCatalog() {
     .order("sort_order", { ascending: true });
   if (error) throw error;
 
-  const rows = (data ?? []) as MenuRow[];
-  if (!rows.length) throw new Error("Yemeksepeti kataloğu boş; menü gönderilmedi.");
+  const rows = ((data ?? []) as MenuRow[]).filter(
+    (row) => !EXCLUDED_CATEGORIES.has(String(row.category || "").trim().toLocaleLowerCase("tr-TR"))
+  );
+  if (!rows.length) throw new Error("Yemeksepeti kataloğunda gönderilecek ürün yok.");
 
   const items: Record<string, CatalogItem> = {};
   const grouped = new Map<string, MenuRow[]>();
