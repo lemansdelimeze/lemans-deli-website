@@ -20,6 +20,11 @@ type DeliveryHeroOrder = {
   shortCode?: string | null;
   test?: boolean;
   createdAt?: string | null;
+  callbackUrls?: {
+    orderAcceptedUrl?: string | null;
+    orderPreparedUrl?: string | null;
+    orderPickedUpUrl?: string | null;
+  };
   expeditionType?: "delivery" | "pickup";
   comments?: { customerComment?: string | null };
   customer?: {
@@ -363,6 +368,7 @@ if (!jwt.valid) {
       numberValue(payload.price?.grandTotal) ||
       numberValue(payload.price?.totalNet) ||
       subtotal;
+    const acceptedOnPlatform = !payload.test && !payload.callbackUrls?.orderAcceptedUrl;
 
     const { data: order, error: orderError } = await supabaseAdmin
       .from("pos_orders")
@@ -386,7 +392,12 @@ if (!jwt.valid) {
         source: "yemeksepeti",
         external_order_id: externalOrderId,
         external_restaurant_id: payload.platformRestaurant?.id || null,
-        external_status: payload.test ? "test_order" : "received",
+        external_status: payload.test
+          ? "test_order"
+          : acceptedOnPlatform
+            ? "accepted"
+            : "received",
+        pos_stage: acceptedOnPlatform ? "accepted" : "new",
         external_payload: payload,
         channel_net_amount: total,
         invoice_type: null,

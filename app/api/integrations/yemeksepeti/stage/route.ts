@@ -138,7 +138,7 @@ export async function POST(request: NextRequest) {
 
     const { data: order, error: orderError } = await supabase
       .from("pos_orders")
-      .select("id,source,status,external_payload")
+      .select("id,source,status,pos_stage,external_payload")
       .eq("id", body.orderId)
       .eq("source", "yemeksepeti")
       .eq("status", "open")
@@ -151,6 +151,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if (body.stage === "accepted" && order.pos_stage === "accepted") {
+      return NextResponse.json({ ok: true, stage: "accepted", alreadyAccepted: true });
+    }
+
     const payload = (order.external_payload || {}) as YemeksepetiPayload;
     const callbacks = payload.callbackUrls || {};
 
@@ -160,6 +164,16 @@ export async function POST(request: NextRequest) {
         : body.stage === "ready"
           ? callbacks.orderPreparedUrl
           : callbacks.orderPickedUpUrl;
+
+    if (!callbackUrl && body.stage === "accepted") {
+      const { error: updateError } = await supabase
+        .from("pos_orders")
+        .update({ pos_stage: "accepted", external_status: "accepted" })
+        .eq("id", order.id);
+
+      if (updateError) throw updateError;
+      return NextResponse.json({ ok: true, stage: "accepted", acceptedOnPlatform: true });
+    }
 
     if (!callbackUrl) {
       return NextResponse.json(
@@ -173,7 +187,7 @@ export async function POST(request: NextRequest) {
         ? {
             remoteOrderId: String(order.id),
             status: "order_accepted",
-            expectedDeliveryTime:
+            acceptanceTime:
               payload.delivery?.expectedDeliveryTime ||
               new Date(Date.now() + 45 * 60 * 1000).toISOString(),
           }

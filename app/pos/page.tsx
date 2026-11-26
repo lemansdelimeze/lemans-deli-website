@@ -169,6 +169,7 @@ export default function PosPage() {
   const [channelMessage, setChannelMessage] = useState("");
   const [syncingTrendyol, setSyncingTrendyol] = useState(false);
 const [trendyolAutoSync, setTrendyolAutoSync] = useState(true);  const [newOrderNotice, setNewOrderNotice] = useState<IncomingOrder | null>(null);
+  const [acceptingOrderId, setAcceptingOrderId] = useState<number | null>(null);
   const [onlineSettings, setOnlineSettings] =
     useState<OnlineOrderSettings | null>(null);
   const [savingOnlineSettings, setSavingOnlineSettings] = useState(false);
@@ -311,7 +312,9 @@ const [trendyolAutoSync, setTrendyolAutoSync] = useState(true);  const [newOrder
     }
 
     const fresh = rows.filter(
-      (row) => !knownIncomingIdsRef.current.has(row.id)
+      (row) =>
+        !knownIncomingIdsRef.current.has(row.id) &&
+        ["web", "trendyol", "yemeksepeti"].includes(String(row.source))
     );
 
     knownIncomingIdsRef.current = new Set(rows.map((row) => row.id));
@@ -438,7 +441,9 @@ useEffect(() => {
   if (!alertsEnabled || alarmMuted) return;
 
   const pendingOrder = incomingOrders.find(
-    (order) => (order.pos_stage || "new") === "new"
+    (order) =>
+      ["web", "trendyol", "yemeksepeti"].includes(String(order.source)) &&
+      (order.pos_stage || "new") === "new"
   );
 
   if (!pendingOrder) {
@@ -991,18 +996,25 @@ await loadIncomingOrdersOnly();
   }
 
   async function acceptIncomingOrder(order: IncomingOrder) {
-    await setIncomingStage(order.id, "accepted");
+    if (acceptingOrderId === order.id) return;
 
-    setNewOrderNotice(null);
-    setChannelMessage(
-      `${sourceLabel(order.source)} ${
+    setAcceptingOrderId(order.id);
+    try {
+      const accepted = await setIncomingStage(order.id, "accepted");
+      if (!accepted) return;
+
+      setNewOrderNotice(null);
+      setChannelMessage(`${sourceLabel(order.source)} ${
         order.receipt_number || `#${order.id}`
-      } kabul edildi.`
-    );
-
-    await loadIncomingOrdersOnly();
+      } kabul edildi.`);
+      await loadIncomingOrdersOnly();
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Sipariş kabul edilemedi.");
+    } finally {
+      setAcceptingOrderId(null);
+    }
   }
-  
+
   function startCompleteIncomingOrder(order: IncomingOrder) {
     // Web siparişinde ödeme, sipariş oluşturulurken bilinmez. Teslim anında
     // kasiyer mutlaka tahsilat yöntemini kaydetmelidir.
@@ -1097,10 +1109,10 @@ await loadIncomingOrdersOnly();
     await loadData();
   }
 
-   async function setIncomingStage(
+  async function setIncomingStage(
     orderIdValue: number,
     stage: "new" | "accepted" | "preparing" | "ready" | "on_the_way"
-  ) {
+  ): Promise<boolean> {
     const currentOrder = incomingOrders.find(
       (order) => order.id === orderIdValue
     );
@@ -1138,16 +1150,17 @@ await loadIncomingOrdersOnly();
       const result = await response.json();
 
       if (!response.ok || !result.ok) {
-       alert(
-  [result.error, result.response]
-    .filter(Boolean)
-    .join("\n\n")
-);
-        return;
+        alert(
+          [result.error, result.response]
+            .filter(Boolean)
+            .join("\n\n")
+        );
+        if (notifyTrendyol) await syncTrendyol(false);
+        return false;
       }
 
       await loadData();
-      return;
+      return true;
     }
 
     const { error } = await supabase
@@ -1157,7 +1170,7 @@ await loadIncomingOrdersOnly();
 
     if (error) {
       alert(error.message);
-      return;
+      return false;
     }
 
     if (
@@ -1179,6 +1192,7 @@ await loadIncomingOrdersOnly();
     }
 
     await loadData();
+    return true;
   }
 
   const visibleItems = useMemo(() => {
@@ -2269,9 +2283,10 @@ await loadData();
                         <button
                           type="button"
                           onClick={() => void acceptIncomingOrder(order)}
-                          className="rounded-xl bg-[#6e1f12] px-3 py-2 text-xs font-bold text-white"
+                          disabled={acceptingOrderId === order.id}
+                          className="rounded-xl bg-[#6e1f12] px-3 py-2 text-xs font-bold text-white disabled:cursor-wait disabled:opacity-50"
                         >
-                          ✓ Kabul Et
+                          {acceptingOrderId === order.id ? "İşleniyor…" : "✓ Kabul Et"}
                         </button>
                         )}
 
@@ -2540,9 +2555,10 @@ await loadData();
                 <button
                   type="button"
                   onClick={() => void acceptIncomingOrder(newOrderNotice)}
-                  className="rounded-xl bg-[#6e1f12] px-4 py-2 text-sm font-bold text-white"
+                  disabled={acceptingOrderId === newOrderNotice.id}
+                  className="rounded-xl bg-[#6e1f12] px-4 py-2 text-sm font-bold text-white disabled:cursor-wait disabled:opacity-50"
                 >
-                  ✓ Kabul Et
+                  {acceptingOrderId === newOrderNotice.id ? "İşleniyor…" : "✓ Kabul Et"}
                 </button>
               </div>
             </div>

@@ -347,7 +347,7 @@ function posStatusForPackage(packageStatus: string) {
 function posStageForPackage(packageStatus: string) {
   const status = packageStatus.toUpperCase();
 
-  if (["PICKED", "ACCEPTED"].includes(status)) return "accepted";
+  if (["PICKED", "PICKING", "ACCEPTED"].includes(status)) return "accepted";
   if (["PREPARING", "PREPARED"].includes(status)) return "preparing";
   if (["INVOICED", "READY"].includes(status)) return "ready";
   if (["SHIPPED", "ON_THE_WAY", "ONWAY"].includes(status)) {
